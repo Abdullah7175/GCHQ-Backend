@@ -1,0 +1,62 @@
+import { Entity, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from '../common/entities/base.entity';
+import { UserRole } from '../common/enums';
+import { City } from '../cities/city.entity';
+import { Hospital } from '../hospitals/hospital.entity';
+import { Provider } from '../providers/provider.entity';
+import { Sector } from '../sectors/sector.entity';
+import { Ambulance } from '../ambulances/ambulance.entity';
+
+@Entity('users')
+export class User extends BaseEntity {
+  @Column({ unique: true })
+  email: string;
+
+  @Column()
+  password: string;
+
+  @Column()
+  name: string;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.HOSPITAL })
+  role: UserRole;
+
+  @Column({ name: 'city_id', nullable: true })
+  cityId: string | null;
+
+  @ManyToOne(() => City, (city) => city.users, { nullable: true })
+  @JoinColumn({ name: 'city_id' })
+  city: City | null;
+
+  @Column({ name: 'hospital_id', nullable: true })
+  hospitalId: string | null;
+
+  @ManyToOne(() => Hospital, { nullable: true })
+  @JoinColumn({ name: 'hospital_id' })
+  hospital: Hospital | null;
+
+  @Column({ name: 'provider_id', nullable: true })
+  providerId: string | null;
+
+  @ManyToOne(() => Provider, { nullable: true })
+  @JoinColumn({ name: 'provider_id' })
+  provider: Provider | null;
+
+  /** 1122 HQ sector CSR assignment — null means not sector-bound */
+  @Column({ name: 'sector_id', nullable: true })
+  sectorId: string | null;
+
+  @ManyToOne(() => Sector, { nullable: true })
+  @JoinColumn({ name: 'sector_id' })
+  sector: Sector | null;
+
+  /** City overseer watches all sectors; does not claim/guide corridors */
+  @Column({ name: 'is_city_overseer', default: false })
+  isCityOverseer: boolean;
+
+  @OneToMany(() => Ambulance, (ambulance) => ambulance.driver)
+  ambulances: Ambulance[];
+
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+}
