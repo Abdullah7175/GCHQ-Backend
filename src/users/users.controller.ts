@@ -6,47 +6,52 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
-import { UserRole } from '../common/enums';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { Permission } from '../auth/permissions.enum';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly service: UsersService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.HQ_1122)
-  findAll() {
-    return this.usersService.findAll();
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.service.findAll(
+      { relations: { hospital: true, provider: true, city: true, sector: true } as never, order: { createdAt: 'DESC' } },
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined
+    );
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN, UserRole.HQ_1122)
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id, { hospital: true, provider: true, city: true } as never);
+    return this.service.findOne(id, { hospital: true, provider: true, city: true } as never);
   }
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+    return this.service.create(dto);
   }
 
   @Put(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+    return this.service.remove(id);
   }
 }

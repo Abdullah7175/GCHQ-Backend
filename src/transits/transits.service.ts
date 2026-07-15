@@ -74,6 +74,16 @@ export class TransitsService extends BaseCrudService<Transit> {
     return super.findOne(id, this.relations);
   }
 
+  async findActiveForAmbulance(ambulanceId: string): Promise<Transit | null> {
+    return this.transitRepo.findOne({
+      where: {
+        ambulanceId,
+        status: In([TransitStatus.PENDING, TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]),
+      },
+      relations: this.relations,
+    });
+  }
+
   findActive(cityId?: string) {
     return this.transitRepo.find({
       where: {

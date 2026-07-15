@@ -22,11 +22,16 @@ export class UsersService extends BaseCrudService<User> {
     return super.create({ ...dto, password: hashed } as Partial<User>);
   }
 
-  findAll() {
-    return this.userRepo.find({
-      relations: { hospital: true, provider: true, city: true, sector: true } as never,
-      order: { createdAt: 'DESC' },
-    });
+  findAll(options?: any, page?: number, limit?: number) {
+    return super.findAll(
+      {
+        ...options,
+        relations: { hospital: true, provider: true, city: true, sector: true } as never,
+        order: { createdAt: 'DESC' },
+      },
+      page,
+      limit
+    );
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {
@@ -65,5 +70,12 @@ export class UsersService extends BaseCrudService<User> {
 
   async findByEmail(email: string): Promise<User | null> {
     return this.userRepo.findOne({ where: { email } });
+  }
+
+  async findByApiKey(apiKey: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { apiKey },
+      relations: { hospital: true, provider: true, city: true, sector: true } as never,
+    });
   }
 }

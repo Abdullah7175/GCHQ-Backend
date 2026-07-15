@@ -45,9 +45,16 @@ export class Ambulance extends BaseEntity {
   @Column({ name: 'driver_id', nullable: true })
   driverId: string | null;
 
+  @Column({ name: 'gps_url', type: 'varchar', nullable: true })
+  gpsUrl: string | null;
+
+  @Column({ name: 'gps_headers', type: 'text', nullable: true })
+  gpsHeaders: string | null;
+
   @ManyToOne(() => User, (user) => user.ambulances, { nullable: true })
   @JoinColumn({ name: 'driver_id' })
   driver: User | null;
+
 
   @OneToMany(() => Transit, (transit) => transit.ambulance)
   transits: Transit[];

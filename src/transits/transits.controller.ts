@@ -14,16 +14,20 @@ import {
 import { TransitsService } from './transits.service';
 import { CreateTransitDto, UpdateTransitDto } from './dto/transit.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { Permission } from '../auth/permissions.enum';
 import { JwtPayload } from '../auth/jwt.strategy';
 import { resolveCityId } from '../common/utils/city-scope';
 import { TransitsQueryDto } from './dto/transits-query.dto';
 
 @Controller('transits')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class TransitsController {
   constructor(private readonly service: TransitsService) {}
 
   @Get()
+  @RequirePermissions(Permission.READ_TRANSIT)
   findAll(
     @Req() req: { user: JwtPayload },
     @Query() query: TransitsQueryDto,
@@ -38,16 +42,19 @@ export class TransitsController {
   }
 
   @Get(':id')
+  @RequirePermissions(Permission.READ_TRANSIT)
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
   @Post()
+  @RequirePermissions(Permission.CREATE_TRANSIT)
   create(@Body() dto: CreateTransitDto) {
     return this.service.create(dto);
   }
 
   @Patch(':id/claim')
+  @RequirePermissions(Permission.CLAIM_TRANSIT)
   claim(@Param('id') id: string, @Req() req: { user: JwtPayload }) {
     return this.service.claim(
       id,
@@ -58,6 +65,7 @@ export class TransitsController {
   }
 
   @Patch(':id/release')
+  @RequirePermissions(Permission.RELEASE_TRANSIT)
   release(@Param('id') id: string, @Req() req: { user: JwtPayload }) {
     return this.service.releaseGuidance(
       id,
@@ -67,32 +75,39 @@ export class TransitsController {
   }
 
   @Patch(':id/start')
+  @RequirePermissions(Permission.START_TRANSIT)
   start(@Param('id') id: string, @Body() body: { currentLat?: number; currentLng?: number }) {
     return this.service.start(id, body.currentLat, body.currentLng);
   }
 
   @Patch(':id/complete')
+  @RequirePermissions(Permission.COMPLETE_TRANSIT)
   complete(@Param('id') id: string) {
     return this.service.complete(id);
   }
 
   @Patch(':id/arrived')
+  @RequirePermissions(Permission.ARRIVE_TRANSIT)
   arrived(@Param('id') id: string) {
     return this.service.markArrived(id);
   }
 
   @Patch(':id/prep-ready')
+  @RequirePermissions(Permission.PREP_READY_TRANSIT)
   prepReady(@Param('id') id: string) {
     return this.service.setPrepReady(id);
   }
 
   @Put(':id')
+  @RequirePermissions(Permission.UPDATE_TRANSIT)
   update(@Param('id') id: string, @Body() dto: UpdateTransitDto) {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
+  @RequirePermissions(Permission.DELETE_TRANSIT)
   remove(@Param('id') id: string) {
     return this.service.remove(id);
   }
 }
+

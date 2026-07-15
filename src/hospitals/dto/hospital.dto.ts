@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateHospitalDto {
   @IsString()
@@ -30,6 +30,11 @@ export class CreateHospitalDto {
   @IsOptional()
   @IsNumber()
   erBays?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialties?: string[];
 }
 
 export class UpdateHospitalDto {
@@ -60,4 +65,10 @@ export class UpdateHospitalDto {
   @IsOptional()
   @IsNumber()
   erBays?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialties?: string[];
 }
+

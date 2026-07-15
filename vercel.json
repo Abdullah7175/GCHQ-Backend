@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "env": {
+    "DATABASE_URL": "postgresql://root:%2A%2A%40%2F%23Abc1@103.65.248.160:5432/GCHQ?sslmode=disable",
+    "JWT_SECRET": "green-corridor-mvp-secret-key-2026",
+    "JWT_EXPIRES_IN": "7d"
+  },
+  "name": "gchq-backend",
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
+    }
+  ]
+}

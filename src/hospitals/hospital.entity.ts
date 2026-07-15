@@ -39,8 +39,12 @@ export class Hospital extends BaseEntity {
   @Column({ name: 'er_bays', default: 0 })
   erBays: number;
 
+  @Column({ type: 'simple-array', nullable: true })
+  specialties: string[] | null;
+
   @OneToMany(() => Transit, (transit) => transit.hospital)
   transits: Transit[];
+
 
   @OneToMany(() => User, (user) => user.hospital)
   users: User[];

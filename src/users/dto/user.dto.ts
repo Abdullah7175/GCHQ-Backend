@@ -42,6 +42,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isCityOverseer?: boolean;
+
+  @IsOptional()
+  @IsString()
+  apiKey?: string;
 }
 
 export class UpdateUserDto {
@@ -85,6 +89,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  apiKey?: string;
 }
 
 export class LoginDto {

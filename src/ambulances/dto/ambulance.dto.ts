@@ -26,6 +26,14 @@ export class CreateAmbulanceDto {
   @IsOptional()
   @IsUUID()
   driverId?: string;
+
+  @IsOptional()
+  @IsString()
+  gpsUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  gpsHeaders?: string;
 }
 
 export class UpdateAmbulanceDto {
@@ -56,6 +64,14 @@ export class UpdateAmbulanceDto {
   @IsOptional()
   @IsUUID()
   driverId?: string;
+
+  @IsOptional()
+  @IsString()
+  gpsUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  gpsHeaders?: string;
 }
 
 export class UpdateGpsDto {

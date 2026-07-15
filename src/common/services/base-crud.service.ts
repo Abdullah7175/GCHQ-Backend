@@ -1,13 +1,23 @@
-import { Repository, ObjectLiteral, FindOptionsWhere, FindOptionsRelations } from 'typeorm';
+import { Repository, ObjectLiteral, FindOptionsWhere, FindOptionsRelations, FindManyOptions } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 
 export class BaseCrudService<T extends ObjectLiteral> {
   constructor(protected readonly repository: Repository<T>) {}
 
-  async findAll(relations?: FindOptionsRelations<T>): Promise<T[]> {
+  async findAll(options?: FindManyOptions<T>, page?: number, limit?: number): Promise<{ data: T[]; total: number; page: number; limit: number; totalPages: number } | T[]> {
+    if (page && limit) {
+      const skip = (page - 1) * limit;
+      const [data, total] = await this.repository.findAndCount({
+        ...options,
+        skip,
+        take: limit,
+        order: options?.order || ({ createdAt: 'DESC' } as never),
+      });
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    }
     return this.repository.find({
-      ...(relations ? { relations } : {}),
-      order: { createdAt: 'DESC' } as never,
+      ...options,
+      order: options?.order || ({ createdAt: 'DESC' } as never),
     });
   }
 

@@ -2,15 +2,18 @@ import { Controller, Get, Post, Put, Delete, Body, Param, Patch, Query, UseGuard
 import { SectorsService } from './sectors.service';
 import { CreateSectorDto, UpdateSectorDto } from './dto/sector.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { Permission } from '../auth/permissions.enum';
 
 @Controller('sectors')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SectorsController {
   constructor(private readonly service: SectorsService) {}
 
   @Get()
-  findAll(@Query('cityId') cityId?: string) {
-    return this.service.findByCity(cityId);
+  findAll(@Query('cityId') cityId?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.service.findByCity(cityId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
   }
 
   @Get(':id')
@@ -19,22 +22,27 @@ export class SectorsController {
   }
 
   @Post()
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   create(@Body() dto: CreateSectorDto) {
     return this.service.create(dto);
   }
 
   @Put(':id')
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   update(@Param('id') id: string, @Body() dto: UpdateSectorDto) {
     return this.service.update(id, dto);
   }
 
   @Patch(':id/toggle-override')
+  @RequirePermissions(Permission.TOGGLE_OVERRIDE)
   toggleOverride(@Param('id') id: string) {
     return this.service.toggleOverride(id);
   }
 
   @Delete(':id')
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
   remove(@Param('id') id: string) {
     return this.service.remove(id);
   }
 }
+

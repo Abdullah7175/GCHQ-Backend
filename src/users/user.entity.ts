@@ -57,6 +57,14 @@ export class User extends BaseEntity {
   @OneToMany(() => Ambulance, (ambulance) => ambulance.driver)
   ambulances: Ambulance[];
 
+  /** For HQ/SafeCity: if populated, user can only see these providers' fleets/transits */
+  @Column('simple-array', { name: 'permitted_provider_ids', nullable: true })
+  permittedProviderIds: string[] | null;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
+
+  @Column({ name: 'api_key', type: 'varchar', unique: true, nullable: true })
+  apiKey: string | null;
 }
+

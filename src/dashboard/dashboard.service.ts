@@ -79,12 +79,15 @@ export class DashboardService {
     };
   }
 
-  async getSafeCityDashboard(cityId: string) {
+  async getSafeCityDashboard(cityId: string, permittedProviderIds?: string[]) {
     const config = await this.getCityConfig(cityId);
     const activeTransits = await this.transitRepo.find({
       where: {
         cityId,
         status: In([TransitStatus.EN_ROUTE]),
+        ...(permittedProviderIds && permittedProviderIds.length > 0 ? {
+          ambulance: { providerId: In(permittedProviderIds) }
+        } : {}),
       },
       relations: {
         ambulance: { provider: true },
@@ -97,7 +100,12 @@ export class DashboardService {
 
     const sectors = await this.sectorRepo.find({ where: { cityId }, order: { name: 'ASC' } });
     const ambulances = await this.ambulanceRepo.find({
-      where: { cityId, status: In(['en_route', 'busy'] as never) },
+      where: {
+        cityId,
+        ...(permittedProviderIds && permittedProviderIds.length > 0 ? {
+          providerId: In(permittedProviderIds)
+        } : {}),
+      },
       relations: { provider: true } as never,
     });
 
@@ -121,11 +129,14 @@ export class DashboardService {
     };
   }
 
-  async getHqDashboard(cityId: string, options?: { sectorId?: string | null; isCityOverseer?: boolean }) {
+  async getHqDashboard(cityId: string, options?: { sectorId?: string | null; isCityOverseer?: boolean; permittedProviderIds?: string[] }) {
     const activeTransits = await this.transitRepo.find({
       where: {
         cityId,
         status: In([TransitStatus.PENDING, TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]),
+        ...(options?.permittedProviderIds && options.permittedProviderIds.length > 0 ? {
+          ambulance: { providerId: In(options.permittedProviderIds) }
+        } : {}),
       },
       relations: {
         ambulance: { provider: true },
@@ -148,7 +159,12 @@ export class DashboardService {
     );
 
     const ambulances = await this.ambulanceRepo.find({
-      where: { cityId },
+      where: {
+        cityId,
+        ...(options?.permittedProviderIds && options.permittedProviderIds.length > 0 ? {
+          providerId: In(options.permittedProviderIds)
+        } : {}),
+      },
       relations: { provider: true } as never,
     });
     const todayCompleted = await this.transitRepo.count({
@@ -248,6 +264,23 @@ export class DashboardService {
           .addGroupBy('et.code')
           .getRawMany();
 
+        const sectorEmergencies = await this.transitRepo
+          .createQueryBuilder('t')
+          .leftJoin('t.sector', 's')
+          .leftJoin('t.emergencyType', 'et')
+          .select('s.name', 'sectorName')
+          .addSelect('et.name', 'emergencyType')
+          .addSelect('et.code', 'code')
+          .addSelect('COUNT(*)', 'count')
+          .where('t.city_id = :cityId', { cityId: city.id })
+          .andWhere('t.created_at >= CURRENT_DATE')
+          .groupBy('s.id')
+          .addGroupBy('s.name')
+          .addGroupBy('et.id')
+          .addGroupBy('et.name')
+          .addGroupBy('et.code')
+          .getRawMany();
+
         const completedToday = todayTransits.filter((t) => t.status === TransitStatus.COMPLETED);
         const enRouteToday = todayTransits.filter((t) =>
           [TransitStatus.EN_ROUTE, TransitStatus.ARRIVED, TransitStatus.COMPLETED].includes(t.status),
@@ -294,6 +327,7 @@ export class DashboardService {
           providerTrips,
           hospitalLoad,
           hospitalEmergencies,
+          sectorEmergencies,
           latencyBreaches,
         };
       }),
@@ -319,6 +353,7 @@ export class DashboardService {
       providerTrips: citySummaries.flatMap((s) => s.providerTrips),
       hospitalLoad: citySummaries.flatMap((s) => s.hospitalLoad),
       hospitalEmergencies: citySummaries.flatMap((s) => s.hospitalEmergencies),
+      sectorEmergencies: citySummaries.flatMap((s) => s.sectorEmergencies),
     };
   }
 }

@@ -33,3 +33,4 @@ coverage/
 # Nest / temp
 .temp/
 .tmp/
+.vercel

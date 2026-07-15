@@ -11,12 +11,16 @@ export class SectorsService extends BaseCrudService<Sector> {
     super(repo);
   }
 
-  findByCity(cityId?: string) {
-    return this.repository.find({
-      where: cityId ? { cityId } : {},
-      relations: { city: true } as never,
-      order: { name: 'ASC' },
-    });
+  findByCity(cityId?: string, page?: number, limit?: number) {
+    return super.findAll(
+      {
+        where: cityId ? { cityId } : {},
+        relations: { city: true } as never,
+        order: { name: 'ASC' },
+      },
+      page,
+      limit
+    );
   }
 
   findOne(id: string) {

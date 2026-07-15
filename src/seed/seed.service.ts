@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { City } from '../cities/city.entity';
 import { DEFAULT_CITY_CONFIG } from '../cities/city-operational-config';
 import { Provider } from '../providers/provider.entity';
@@ -97,13 +98,14 @@ export class SeedService implements OnModuleInit {
     ]);
 
     const hospitals = await this.hospitalRepo.save([
-      { name: 'Mayo Hospital', cityId: lahore.id, address: 'Hospital Road, Lahore', latitude: 31.5820, longitude: 74.3290, sectorId: sectors[0].id, bedCapacity: 500, erBays: 12 },
-      { name: 'Jinnah Hospital', cityId: lahore.id, address: 'Usmani Road, Lahore', latitude: 31.4705, longitude: 74.3045, sectorId: sectors[2].id, bedCapacity: 450, erBays: 10 },
-      { name: 'Services Hospital', cityId: lahore.id, address: 'Jail Road, Lahore', latitude: 31.5330, longitude: 74.3420, sectorId: sectors[1].id, bedCapacity: 400, erBays: 8 },
-      { name: 'General Hospital', cityId: lahore.id, address: 'Ferozepur Road, Lahore', latitude: 31.5050, longitude: 74.3280, sectorId: sectors[3].id, bedCapacity: 350, erBays: 6 },
-      { name: 'Shifa International', cityId: islamabad.id, address: 'H-8/4, Islamabad', latitude: 33.6630, longitude: 73.0650, sectorId: sectors[6].id, bedCapacity: 300, erBays: 8 },
-      { name: 'PIMS Hospital', cityId: islamabad.id, address: 'G-8/3, Islamabad', latitude: 33.6950, longitude: 73.0550, sectorId: sectors[7].id, bedCapacity: 400, erBays: 10 },
+      { name: 'Mayo Hospital', cityId: lahore.id, address: 'Hospital Road, Lahore', latitude: 31.5820, longitude: 74.3290, sectorId: sectors[0].id, bedCapacity: 500, erBays: 12, specialties: ['Neurosurgery', 'Advanced Trauma', 'Cardiac Suspected', 'Pediatrics'] },
+      { name: 'Jinnah Hospital', cityId: lahore.id, address: 'Usmani Road, Lahore', latitude: 31.4705, longitude: 74.3045, sectorId: sectors[2].id, bedCapacity: 450, erBays: 10, specialties: ['Advanced Trauma', 'Burn Care', 'Orthopedics'] },
+      { name: 'Services Hospital', cityId: lahore.id, address: 'Jail Road, Lahore', latitude: 31.5330, longitude: 74.3420, sectorId: sectors[1].id, bedCapacity: 400, erBays: 8, specialties: ['Neurosurgery', 'Cardiac Suspected', 'Obstetrics'] },
+      { name: 'General Hospital', cityId: lahore.id, address: 'Ferozepur Road, Lahore', latitude: 31.5050, longitude: 74.3280, sectorId: sectors[3].id, bedCapacity: 350, erBays: 6, specialties: ['Cardiac Suspected', 'Obstetrics', 'Pediatrics'] },
+      { name: 'Shifa International', cityId: islamabad.id, address: 'H-8/4, Islamabad', latitude: 33.6630, longitude: 73.0650, sectorId: sectors[6].id, bedCapacity: 300, erBays: 8, specialties: ['Neurosurgery', 'Cardiac Suspected'] },
+      { name: 'PIMS Hospital', cityId: islamabad.id, address: 'G-8/3, Islamabad', latitude: 33.6950, longitude: 73.0550, sectorId: sectors[7].id, bedCapacity: 400, erBays: 10, specialties: ['Advanced Trauma', 'Neurosurgery'] },
     ]);
+
 
     const emergencyTypes = await this.emergencyTypeRepo.save([
       { name: 'Trauma/Cardiac', code: 'TRAUMA', severityLevel: 1 },
@@ -122,31 +124,30 @@ export class SeedService implements OnModuleInit {
       { name: 'Code Green', code: 'GREEN', color: '#16a34a', priority: 3 },
     ]);
 
-    const password = await bcrypt.hash('password123', 10);
+    const md5Hash = crypto.createHash('md5').update('password123').digest('hex');
+    const password = await bcrypt.hash(md5Hash, 10);
 
     const users: User[] = await this.userRepo.save([
-      { email: 'admin@gchq.pk', password, name: 'System Admin', role: UserRole.ADMIN },
-      { email: 'hospital@services.pk', password, name: 'Services ER Lead', role: UserRole.HOSPITAL, cityId: lahore.id, hospitalId: hospitals[2].id },
+      { email: 'admin@gchq.pk', password, name: 'System Admin', role: UserRole.ADMIN, apiKey: 'key_admin_secret' },
+      { email: 'hospital@services.pk', password, name: 'Services ER Lead', role: UserRole.HOSPITAL, cityId: lahore.id, hospitalId: hospitals[2].id, apiKey: 'key_hospital_services' },
       { email: 'hospital@mayo.pk', password, name: 'Mayo ER Lead', role: UserRole.HOSPITAL, cityId: lahore.id, hospitalId: hospitals[0].id },
       { email: 'hospital@jinnah.pk', password, name: 'Jinnah ER Lead', role: UserRole.HOSPITAL, cityId: lahore.id, hospitalId: hospitals[1].id },
-      { email: 'safecity@psca.pk', password, name: 'Traffic Controller', role: UserRole.SAFE_CITY, cityId: lahore.id },
-      { email: 'hq@1122.pk', password, name: 'City HQ Overseer', role: UserRole.HQ_1122, cityId: lahore.id, isCityOverseer: true },
-      { email: 'csr.mall@1122.pk', password, name: 'CSR Mall Road', role: UserRole.HQ_1122, cityId: lahore.id, sectorId: sectors[0].id, isCityOverseer: false },
-      { email: 'csr.jail@1122.pk', password, name: 'CSR Jail Road', role: UserRole.HQ_1122, cityId: lahore.id, sectorId: sectors[1].id, isCityOverseer: false },
+      { email: 'safecity@psca.pk', password, name: 'Traffic Controller', role: UserRole.SAFE_CITY, cityId: lahore.id, apiKey: 'key_safecity_controller' },
+      { email: 'hq@1122.pk', password, name: 'City HQ Overseer', role: UserRole.HQ_1122, cityId: lahore.id, isCityOverseer: true, apiKey: 'key_hq_overseer' },
       { email: 'vvip@gov.pk', password, name: 'VVIP Command', role: UserRole.VVIP },
-      { email: 'driver@1122.pk', password, name: 'Paramedic Ali', role: UserRole.PARAMEDIC, cityId: lahore.id, providerId: providers[0].id },
+      { email: 'driver@1122.pk', password, name: 'Paramedic Ali', role: UserRole.PARAMEDIC, cityId: lahore.id, providerId: providers[0].id, apiKey: 'key_paramedic_ali' },
       { email: 'driver2@1122.pk', password, name: 'Paramedic Sara', role: UserRole.PARAMEDIC, cityId: lahore.id, providerId: providers[1].id },
     ]);
 
     const ambulances = await this.ambulanceRepo.save([
-      { unitNumber: 'RESCUE-782', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5450, currentLng: 74.3350, currentSpeed: 0, driverId: users[9].id },
+      { unitNumber: 'RESCUE-782', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5450, currentLng: 74.3350, currentSpeed: 0, driverId: users[7].id },
       { unitNumber: 'RESCUE-104', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5850, currentLng: 74.2950, currentSpeed: 0 },
       { unitNumber: 'RESCUE-429', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5480, currentLng: 74.3400, currentSpeed: 0 },
       { unitNumber: 'RESCUE-312', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.4780, currentLng: 74.3180, currentSpeed: 0 },
       { unitNumber: 'RESCUE-518', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5620, currentLng: 74.3250, currentSpeed: 0 },
       { unitNumber: 'RESCUE-633', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5150, currentLng: 74.3550, currentSpeed: 0 },
-      { unitNumber: 'RESCUE-901', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5300, currentLng: 74.3450, currentSpeed: 0, driverId: users[9].id },
-      { unitNumber: 'EDHI-45', cityId: lahore.id, providerId: providers[1].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5200, currentLng: 74.3500, currentSpeed: 0, driverId: users[10].id },
+      { unitNumber: 'RESCUE-901', cityId: lahore.id, providerId: providers[0].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5300, currentLng: 74.3450, currentSpeed: 0 },
+      { unitNumber: 'EDHI-45', cityId: lahore.id, providerId: providers[1].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5200, currentLng: 74.3500, currentSpeed: 0, driverId: users[8].id },
       { unitNumber: 'EDHI-12', cityId: lahore.id, providerId: providers[1].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5750, currentLng: 74.3100, currentSpeed: 0 },
       { unitNumber: 'CHIPPA-22', cityId: lahore.id, providerId: providers[2].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.5000, currentLng: 74.3300, currentSpeed: 0 },
       { unitNumber: 'CHIPPA-07', cityId: lahore.id, providerId: providers[2].id, status: AmbulanceStatus.AVAILABLE, currentLat: 31.4920, currentLng: 74.3150, currentSpeed: 0 },
@@ -205,7 +206,8 @@ export class SeedService implements OnModuleInit {
   }
 
   private async ensureHqDemoUsers(cityId: string, sectors: Sector[]) {
-    const password = await bcrypt.hash('password123', 10);
+    const md5Hash = crypto.createHash('md5').update('password123').digest('hex');
+    const password = await bcrypt.hash(md5Hash, 10);
     const overseer = await this.userRepo.findOne({ where: { email: 'hq@1122.pk' } });
     if (overseer) {
       await this.userRepo.update(overseer.id, { isCityOverseer: true, cityId, sectorId: null });
