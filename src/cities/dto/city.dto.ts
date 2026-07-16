@@ -1,7 +1,8 @@
-import { IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class CityConfigDto {  @IsOptional()
+export class CityConfigDto {
+  @IsOptional()
   latencySpeedThresholdKmh?: number;
 
   @IsOptional()
@@ -52,6 +53,21 @@ export class CreateCityDto {
   timezone?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapCenterLat?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapCenterLng?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapDefaultZoom?: number;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => CityConfigDto)
   operationalConfig?: CityConfigDto;
@@ -81,6 +97,21 @@ export class UpdateCityDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapCenterLat?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapCenterLng?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  mapDefaultZoom?: number;
 
   @IsOptional()
   @ValidateNested()

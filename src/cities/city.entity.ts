@@ -27,6 +27,16 @@ export class City extends BaseEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  /** Default map viewport for HQ / Safe City dashboards */
+  @Column({ name: 'map_center_lat', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  mapCenterLat: number | null;
+
+  @Column({ name: 'map_center_lng', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  mapCenterLng: number | null;
+
+  @Column({ name: 'map_default_zoom', type: 'int', default: 12 })
+  mapDefaultZoom: number;
+
   @Column({
     name: 'operational_config',
     type: 'jsonb',

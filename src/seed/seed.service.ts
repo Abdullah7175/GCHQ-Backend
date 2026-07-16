@@ -59,9 +59,35 @@ export class SeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    await this.ensureCityMapCenters();
     const count = await this.userRepo.count();
     if (count > 0) return;
     await this.seed();
+  }
+
+  /** Backfill map viewport for known cities (and leave custom cities to Admin). */
+  private async ensureCityMapCenters() {
+    const defaults: Record<string, { lat: number; lng: number; zoom: number }> = {
+      LHE: { lat: 31.5497, lng: 74.3436, zoom: 12 },
+      ISB: { lat: 33.6844, lng: 73.0479, zoom: 12 },
+      KHI: { lat: 24.8607, lng: 67.0011, zoom: 12 },
+      RWP: { lat: 33.5651, lng: 73.0169, zoom: 12 },
+      FSD: { lat: 31.4504, lng: 73.1350, zoom: 12 },
+      PEW: { lat: 34.0151, lng: 71.5249, zoom: 12 },
+      QTA: { lat: 30.1798, lng: 66.9750, zoom: 12 },
+      MUL: { lat: 30.1575, lng: 71.5249, zoom: 12 },
+    };
+    const cities = await this.cityRepo.find();
+    for (const city of cities) {
+      const d = defaults[city.code?.toUpperCase()];
+      if (!d) continue;
+      if (city.mapCenterLat != null && city.mapCenterLng != null) continue;
+      await this.cityRepo.update(city.id, {
+        mapCenterLat: d.lat,
+        mapCenterLng: d.lng,
+        mapDefaultZoom: city.mapDefaultZoom || d.zoom,
+      });
+    }
   }
 
   async seed() {
@@ -69,6 +95,9 @@ export class SeedService implements OnModuleInit {
       name: 'Lahore',
       code: 'LHE',
       province: 'Punjab',
+      mapCenterLat: 31.5497,
+      mapCenterLng: 74.3436,
+      mapDefaultZoom: 12,
       operationalConfig: { ...DEFAULT_CITY_CONFIG, maxConcurrentTransits: 50, transitIdPrefix: 'LHE' },
     });
 
@@ -76,6 +105,9 @@ export class SeedService implements OnModuleInit {
       name: 'Islamabad',
       code: 'ISB',
       province: 'ICT',
+      mapCenterLat: 33.6844,
+      mapCenterLng: 73.0479,
+      mapDefaultZoom: 12,
       operationalConfig: { ...DEFAULT_CITY_CONFIG, maxConcurrentTransits: 30, transitIdPrefix: 'ISB' },
     });
 
