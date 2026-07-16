@@ -108,4 +108,10 @@ export class UpdateGpsDto {
   @IsOptional()
   @IsUUID()
   transitId?: string;
+
+  /** Optional: mobile-computed ETA (minutes). Overwrites transit.etaMinutes when sent. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  etaMinutes?: number;
 }

@@ -301,8 +301,16 @@ export class TransitsService extends BaseCrudService<Transit> {
   /**
    * Called when tracker/demo GPS updates. Updates transit position and
    * auto-completes when ambulance enters hospital geofence.
+   * Does NOT overwrite etaMinutes — mobile owns ETA via PATCH /transits/:id/eta
+   * (or optional etaMinutes on the GPS payload).
    */
-  async applyGpsUpdate(ambulanceId: string, lat: number, lng: number, speed = 0) {
+  async applyGpsUpdate(
+    ambulanceId: string,
+    lat: number,
+    lng: number,
+    speed = 0,
+    etaMinutes?: number | null,
+  ) {
     const active = await this.transitRepo.findOne({
       where: {
         ambulanceId,
@@ -318,17 +326,16 @@ export class TransitsService extends BaseCrudService<Transit> {
         ? this.haversineMeters(lat, lng, Number(active.hospital.latitude), Number(active.hospital.longitude))
         : null;
 
-    const etaMinutes =
-      remaining != null && speed > 5
-        ? Math.max(0.5, (remaining / 1000) / (speed / 60))
-        : active.etaMinutes;
-
-    await this.transitRepo.update(active.id, {
+    const patch: Partial<Transit> = {
       currentLat: lat,
       currentLng: lng,
       currentSpeed: speed,
-      etaMinutes: etaMinutes as never,
-    });
+    };
+    if (etaMinutes != null && Number.isFinite(Number(etaMinutes))) {
+      patch.etaMinutes = Number(etaMinutes);
+    }
+
+    await this.transitRepo.update(active.id, patch as never);
 
     if (
       remaining != null &&
@@ -348,6 +355,57 @@ export class TransitsService extends BaseCrudService<Transit> {
       remainingMeters: remaining,
     });
     this.events.broadcastTransitUpdate(full);
+    return full;
+  }
+
+  /** Persist mobile-reported ETA (overwrites previous etaMinutes). */
+  async updateEta(
+    id: string,
+    dto: { etaMinutes: number; currentLat?: number; currentLng?: number; currentSpeed?: number },
+  ) {
+    const transit = await this.findOne(id);
+    if (
+      transit.status !== TransitStatus.PENDING &&
+      transit.status !== TransitStatus.EN_ROUTE &&
+      transit.status !== TransitStatus.ARRIVED
+    ) {
+      throw new BadRequestException('ETA can only be updated on an active transit');
+    }
+
+    const eta = Number(dto.etaMinutes);
+    if (!Number.isFinite(eta) || eta < 0) {
+      throw new BadRequestException('etaMinutes must be a non-negative number');
+    }
+
+    const patch: Partial<Transit> = { etaMinutes: eta };
+    if (dto.currentLat != null && Number.isFinite(Number(dto.currentLat))) {
+      patch.currentLat = Number(dto.currentLat);
+    }
+    if (dto.currentLng != null && Number.isFinite(Number(dto.currentLng))) {
+      patch.currentLng = Number(dto.currentLng);
+    }
+    if (dto.currentSpeed != null && Number.isFinite(Number(dto.currentSpeed))) {
+      patch.currentSpeed = Number(dto.currentSpeed);
+      if (transit.ambulanceId) {
+        await this.ambulanceRepo.update(transit.ambulanceId, {
+          currentSpeed: Number(dto.currentSpeed),
+          ...(patch.currentLat != null ? { currentLat: patch.currentLat } : {}),
+          ...(patch.currentLng != null ? { currentLng: patch.currentLng } : {}),
+        });
+      }
+    } else if (patch.currentLat != null || patch.currentLng != null) {
+      if (transit.ambulanceId) {
+        await this.ambulanceRepo.update(transit.ambulanceId, {
+          ...(patch.currentLat != null ? { currentLat: patch.currentLat } : {}),
+          ...(patch.currentLng != null ? { currentLng: patch.currentLng } : {}),
+        });
+      }
+    }
+
+    await this.transitRepo.update(id, patch as never);
+    const full = await this.findOne(id);
+    this.events.broadcastTransitUpdate(full);
+    this.events.broadcastDashboardRefresh();
     return full;
   }
 

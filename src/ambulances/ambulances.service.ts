@@ -150,6 +150,7 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
       speed: Number.isFinite(speed) ? speed : 0,
       heading,
       recordedAt: new Date(),
+      etaMinutes: dto.etaMinutes != null ? Number(dto.etaMinutes) : undefined,
     });
 
     this.events.broadcastGpsUpdate({

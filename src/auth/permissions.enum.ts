@@ -18,6 +18,8 @@ export enum Permission {
   ARRIVE_TRANSIT = 'arrive:transit',
   PREP_READY_TRANSIT = 'prep_ready:transit',
   UPDATE_TRANSIT = 'update:transit',
+  /** Driver app: overwrite live ETA (OSRM / blended) on active transit */
+  UPDATE_ETA_TRANSIT = 'update:eta:transit',
   DELETE_TRANSIT = 'delete:transit',
 
   // Telemetry & GPS

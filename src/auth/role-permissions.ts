@@ -30,6 +30,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.COMPLETE_TRANSIT,
     Permission.ARRIVE_TRANSIT,
     Permission.UPDATE_GPS,
+    Permission.UPDATE_ETA_TRANSIT,
     Permission.READ_TRANSIT,
   ],
 };

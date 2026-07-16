@@ -12,7 +12,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { TransitsService } from './transits.service';
-import { CreateTransitDto, UpdateTransitDto } from './dto/transit.dto';
+import { CreateTransitDto, UpdateTransitDto, UpdateTransitEtaDto } from './dto/transit.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -95,6 +95,13 @@ export class TransitsController {
   @RequirePermissions(Permission.ARRIVE_TRANSIT)
   arrived(@Param('id') id: string) {
     return this.service.markArrived(id);
+  }
+
+  /** Driver app: overwrite live ETA (OSRM / blended). Same UUID as create/start. */
+  @Patch(':id/eta')
+  @RequirePermissions(Permission.UPDATE_ETA_TRANSIT)
+  updateEta(@Param('id') id: string, @Body() dto: UpdateTransitEtaDto) {
+    return this.service.updateEta(id, dto);
   }
 
   @Patch(':id/prep-ready')

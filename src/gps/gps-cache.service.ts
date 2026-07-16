@@ -12,6 +12,7 @@ interface CachedLocation {
   speed: number;
   heading?: number | null;
   recordedAt: Date;
+  etaMinutes?: number | null;
 }
 
 @Injectable()
@@ -41,6 +42,7 @@ export class GpsCacheService implements OnModuleDestroy {
       loc.latitude,
       loc.longitude,
       loc.speed,
+      loc.etaMinutes,
     );
   }
 
