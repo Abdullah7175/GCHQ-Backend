@@ -127,19 +127,42 @@ export class DashboardService {
     });
 
     const threshold = config.latencySpeedThresholdKmh;
-    const latencyBreaches = activeTransits.filter(
+    const activeCorridors = activeTransits.map((t) => {
+      const transitSpeed = Number(t.currentSpeed);
+      const ambulanceSpeed = Number(t.ambulance?.currentSpeed);
+      const resolvedSpeed =
+        Number.isFinite(transitSpeed) && transitSpeed > 0
+          ? transitSpeed
+          : Number.isFinite(ambulanceSpeed)
+            ? ambulanceSpeed
+            : 0;
+      return {
+        ...t,
+        currentSpeed: resolvedSpeed,
+        ambulance: t.ambulance
+          ? {
+              ...t.ambulance,
+              currentSpeed: Number.isFinite(ambulanceSpeed) ? ambulanceSpeed : resolvedSpeed,
+              currentLat: t.ambulance.currentLat ?? t.currentLat,
+              currentLng: t.ambulance.currentLng ?? t.currentLng,
+            }
+          : t.ambulance,
+      };
+    });
+
+    const latencyBreaches = activeCorridors.filter(
       (t) => Number(t.currentSpeed) < threshold,
     );
 
     return {
       cityId,
       config,
-      activeCorridors: activeTransits,
+      activeCorridors,
       sectors,
       fleetPositions: ambulances,
       latencyBreaches,
       stats: {
-        activeCorridorsCount: activeTransits.length,
+        activeCorridorsCount: activeCorridors.length,
         fleetEnRoute: ambulances.length,
         maxConcurrent: config.maxConcurrentTransits,
       },
