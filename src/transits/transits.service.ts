@@ -47,9 +47,17 @@ export class TransitsService extends BaseCrudService<Transit> {
     return 2 * R * Math.asin(Math.sqrt(a));
   }
 
-  async findAllPaginated(cityId?: string, page = 1, limit = 20): Promise<PaginatedResult<Transit>> {
+  async findAllPaginated(
+    cityId?: string,
+    page = 1,
+    limit = 20,
+    activeOnly = false,
+  ): Promise<PaginatedResult<Transit>> {
     const where: FindOptionsWhere<Transit> = {};
     if (cityId) where.cityId = cityId;
+    if (activeOnly) {
+      where.status = In([TransitStatus.PENDING, TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]);
+    }
 
     const [data, total] = await this.transitRepo.findAndCount({
       where,
@@ -349,5 +357,22 @@ export class TransitsService extends BaseCrudService<Transit> {
       this.events.broadcastTransitUpdate(full);
       return full;
     });
+  }
+
+  /** Admin delete case — clear GPS rows, free ambulance, remove transit */
+  async remove(id: string): Promise<void> {
+    const transit = await this.findOne(id);
+    await this.transitRepo.manager.transaction(async (em) => {
+      await em.query(`DELETE FROM gps_locations WHERE transit_id = $1`, [id]);
+      await em.delete(Transit, { id });
+      if (transit.ambulanceId) {
+        await em.update(
+          Ambulance,
+          { id: transit.ambulanceId },
+          { status: AmbulanceStatus.AVAILABLE, currentSpeed: 0 },
+        );
+      }
+    });
+    this.events.broadcastDashboardRefresh();
   }
 }

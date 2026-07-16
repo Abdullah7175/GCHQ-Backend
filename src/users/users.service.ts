@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
+import { Ambulance } from '../ambulances/ambulance.entity';
+import { Transit } from '../transits/transit.entity';
 import { CreateUserDto, UpdateUserDto, LoginDto } from './dto/user.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
 
@@ -30,7 +32,7 @@ export class UsersService extends BaseCrudService<User> {
         order: { createdAt: 'DESC' },
       },
       page,
-      limit
+      limit,
     );
   }
 
@@ -40,6 +42,16 @@ export class UsersService extends BaseCrudService<User> {
       data.password = await bcrypt.hash(dto.password, 10);
     }
     return super.update(id, data);
+  }
+
+  /** Unassign driver + clear claims, then delete user (avoids ambulance/transit FK errors). */
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+    await this.userRepo.manager.transaction(async (em) => {
+      await em.update(Ambulance, { driverId: id }, { driverId: null });
+      await em.update(Transit, { claimedById: id }, { claimedById: null, claimedAt: null });
+      await em.delete(User, { id });
+    });
   }
 
   async login(dto: LoginDto) {

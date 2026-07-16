@@ -51,7 +51,7 @@ export class Ambulance extends BaseEntity {
   @Column({ name: 'gps_headers', type: 'text', nullable: true })
   gpsHeaders: string | null;
 
-  @ManyToOne(() => User, (user) => user.ambulances, { nullable: true })
+  @ManyToOne(() => User, (user) => user.ambulances, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'driver_id' })
   driver: User | null;
 

@@ -115,7 +115,7 @@ export class Transit extends BaseEntity {
   @Column({ name: 'claimed_by_id', nullable: true })
   claimedById: string | null;
 
-  @ManyToOne(() => User, { nullable: true })
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'claimed_by_id' })
   claimedBy: User | null;
 

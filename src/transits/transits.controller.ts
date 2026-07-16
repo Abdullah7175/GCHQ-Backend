@@ -34,10 +34,15 @@ export class TransitsController {
   ) {
     const cityId = resolveCityId(req.user, query.cityId);
     if (query.hospitalId) return this.service.findByHospital(query.hospitalId);
-    if (query.active === 'true') return this.service.findActive(cityId);
     if (query.paginated === 'true') {
-      return this.service.findAllPaginated(cityId, query.page, query.limit);
+      return this.service.findAllPaginated(
+        cityId,
+        query.page,
+        query.limit,
+        query.active === 'true',
+      );
     }
+    if (query.active === 'true') return this.service.findActive(cityId);
     return this.service.list(cityId);
   }
 

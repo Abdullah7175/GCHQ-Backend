@@ -6,6 +6,7 @@ import {
   MinLength,
   IsUUID,
   IsBoolean,
+  IsArray,
 } from 'class-validator';
 import { UserRole } from '../../common/enums';
 
@@ -42,6 +43,12 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isCityOverseer?: boolean;
+
+  /** HQ / Safe City: restrict fleet visibility; empty/omitted = all providers */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  permittedProviderIds?: string[];
 
   @IsOptional()
   @IsString()
@@ -89,6 +96,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  permittedProviderIds?: string[];
 
   @IsOptional()
   @IsString()

@@ -39,7 +39,7 @@ export class DashboardService {
     const incoming = await this.transitRepo.find({
       where: {
         hospitalId,
-        status: In([TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]),
+        status: In([TransitStatus.PENDING, TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]),
       },
       relations: {
         ambulance: { provider: true },
