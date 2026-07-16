@@ -51,8 +51,24 @@ export class DashboardService {
       order: { etaMinutes: 'ASC' },
     });
 
+    const completedHistory = await this.transitRepo.find({
+      where: {
+        hospitalId,
+        status: TransitStatus.COMPLETED,
+      },
+      relations: {
+        ambulance: { provider: true },
+        emergencyType: true,
+        triageCode: true,
+        sector: true,
+        city: true,
+      } as never,
+      order: { completedAt: 'DESC' },
+      take: 20,
+    });
+
     const todayCompleted = await this.transitRepo.count({
-      where: { hospitalId, status: TransitStatus.COMPLETED, createdAt: this.todayRange() },
+      where: { hospitalId, status: TransitStatus.COMPLETED, completedAt: this.todayRange() },
     });
 
     const emergencyBreakdown = await this.transitRepo
@@ -75,6 +91,7 @@ export class DashboardService {
         staffAlertActive: incoming.some((t) => t.triageCode?.priority === 1),
       },
       incomingQueue: incoming,
+      completedHistory,
       emergencyBreakdown,
     };
   }
