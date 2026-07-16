@@ -15,7 +15,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (apiKey) {
       const user = await this.usersService.findByApiKey(apiKey);
       if (user && user.isActive) {
-        request.user = user;
+        request.user = {
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+          cityId: user.cityId,
+          hospitalId: user.hospitalId,
+          providerId: user.providerId,
+          sectorId: user.sectorId,
+          isCityOverseer: user.isCityOverseer,
+        };
         return true;
       }
     }

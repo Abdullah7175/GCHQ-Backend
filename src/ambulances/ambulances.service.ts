@@ -1,10 +1,11 @@
 import { Injectable, Inject, forwardRef, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm';
+import { Repository, Not, IsNull, In } from 'typeorm';
 import { Ambulance } from './ambulance.entity';
 import { CreateAmbulanceDto, UpdateAmbulanceDto, UpdateGpsDto } from './dto/ambulance.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
 import { GpsLocation } from '../gps/gps-location.entity';
+import { Transit } from '../transits/transit.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { AmbulanceStatus } from '../common/enums';
 import { TransitsService } from '../transits/transits.service';
@@ -101,6 +102,24 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
 
   update(id: string, dto: UpdateAmbulanceDto) {
     return super.update(id, dto as Partial<Ambulance>);
+  }
+
+  /** Delete ambulance and dependent GPS / transit rows first (FK-safe). */
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+    await this.ambulanceRepo.manager.transaction(async (em) => {
+      const transitIds = (
+        await em.find(Transit, { where: { ambulanceId: id }, select: { id: true } })
+      ).map((t) => t.id);
+
+      if (transitIds.length > 0) {
+        await em.delete(GpsLocation, { transitId: In(transitIds) });
+        await em.delete(Transit, { ambulanceId: id });
+      }
+
+      await em.delete(GpsLocation, { ambulanceId: id });
+      await em.delete(Ambulance, { id });
+    });
   }
 
   async updateGps(id: string, dto: UpdateGpsDto, transitId?: string) {
