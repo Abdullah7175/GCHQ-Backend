@@ -46,6 +46,10 @@ export class UpdateAmbulanceDto {
 
   @IsOptional()
   @IsUUID()
+  cityId?: string;
+
+  @IsOptional()
+  @IsUUID()
   providerId?: string;
 
   @IsOptional()

@@ -37,6 +37,10 @@ export class UpdateSectorDto {
   code?: string;
 
   @IsOptional()
+  @IsUUID()
+  cityId?: string;
+
+  @IsOptional()
   @IsString()
   color?: string;
 

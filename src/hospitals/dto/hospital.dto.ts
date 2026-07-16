@@ -36,6 +36,10 @@ export class UpdateHospitalDto {
   name?: string;
 
   @IsOptional()
+  @IsUUID()
+  cityId?: string;
+
+  @IsOptional()
   @IsString()
   address?: string;
 
