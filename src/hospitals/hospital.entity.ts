@@ -20,11 +20,12 @@ export class Hospital extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   address: string | null;
 
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
-  latitude: number | null;
+  /** Required for driver shortest-path routing to this ER */
+  @Column({ type: 'decimal', precision: 10, scale: 7 })
+  latitude: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
-  longitude: number | null;
+  @Column({ type: 'decimal', precision: 10, scale: 7 })
+  longitude: number;
 
   @Column({ name: 'sector_id', nullable: true })
   sectorId: string | null;
@@ -33,18 +34,11 @@ export class Hospital extends BaseEntity {
   @JoinColumn({ name: 'sector_id' })
   sector: Sector | null;
 
-  @Column({ name: 'bed_capacity', default: 0 })
-  bedCapacity: number;
-
-  @Column({ name: 'er_bays', default: 0 })
-  erBays: number;
-
   @Column({ type: 'simple-array', nullable: true })
   specialties: string[] | null;
 
   @OneToMany(() => Transit, (transit) => transit.hospital)
   transits: Transit[];
-
 
   @OneToMany(() => User, (user) => user.hospital)
   users: User[];

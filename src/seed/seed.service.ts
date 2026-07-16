@@ -98,12 +98,12 @@ export class SeedService implements OnModuleInit {
     ]);
 
     const hospitals = await this.hospitalRepo.save([
-      { name: 'Mayo Hospital', cityId: lahore.id, address: 'Hospital Road, Lahore', latitude: 31.5820, longitude: 74.3290, sectorId: sectors[0].id, bedCapacity: 500, erBays: 12, specialties: ['Neurosurgery', 'Advanced Trauma', 'Cardiac Suspected', 'Pediatrics'] },
-      { name: 'Jinnah Hospital', cityId: lahore.id, address: 'Usmani Road, Lahore', latitude: 31.4705, longitude: 74.3045, sectorId: sectors[2].id, bedCapacity: 450, erBays: 10, specialties: ['Advanced Trauma', 'Burn Care', 'Orthopedics'] },
-      { name: 'Services Hospital', cityId: lahore.id, address: 'Jail Road, Lahore', latitude: 31.5330, longitude: 74.3420, sectorId: sectors[1].id, bedCapacity: 400, erBays: 8, specialties: ['Neurosurgery', 'Cardiac Suspected', 'Obstetrics'] },
-      { name: 'General Hospital', cityId: lahore.id, address: 'Ferozepur Road, Lahore', latitude: 31.5050, longitude: 74.3280, sectorId: sectors[3].id, bedCapacity: 350, erBays: 6, specialties: ['Cardiac Suspected', 'Obstetrics', 'Pediatrics'] },
-      { name: 'Shifa International', cityId: islamabad.id, address: 'H-8/4, Islamabad', latitude: 33.6630, longitude: 73.0650, sectorId: sectors[6].id, bedCapacity: 300, erBays: 8, specialties: ['Neurosurgery', 'Cardiac Suspected'] },
-      { name: 'PIMS Hospital', cityId: islamabad.id, address: 'G-8/3, Islamabad', latitude: 33.6950, longitude: 73.0550, sectorId: sectors[7].id, bedCapacity: 400, erBays: 10, specialties: ['Advanced Trauma', 'Neurosurgery'] },
+      { name: 'Mayo Hospital', cityId: lahore.id, address: 'Hospital Road, Anarkali, Lahore', latitude: 31.5704500, longitude: 74.3089200, sectorId: sectors[0].id, specialties: ['Neurosurgery', 'Advanced Trauma', 'Cardiac Suspected', 'Pediatrics'] },
+      { name: 'Jinnah Hospital', cityId: lahore.id, address: 'Usmani Gate Rd, Lahore', latitude: 31.4847200, longitude: 74.3015800, sectorId: sectors[2].id, specialties: ['Advanced Trauma', 'Burn Care', 'Orthopedics'] },
+      { name: 'Services Hospital', cityId: lahore.id, address: 'Jail Road, Lahore', latitude: 31.5389100, longitude: 74.3336400, sectorId: sectors[1].id, specialties: ['Neurosurgery', 'Cardiac Suspected', 'Obstetrics'] },
+      { name: 'General Hospital', cityId: lahore.id, address: 'Ferozepur Road, Lahore', latitude: 31.4912500, longitude: 74.3168800, sectorId: sectors[3].id, specialties: ['Cardiac Suspected', 'Obstetrics', 'Pediatrics'] },
+      { name: 'Shifa International', cityId: islamabad.id, address: 'H-8/4, Islamabad', latitude: 33.6630500, longitude: 73.0652100, sectorId: sectors[6].id, specialties: ['Neurosurgery', 'Cardiac Suspected'] },
+      { name: 'PIMS Hospital', cityId: islamabad.id, address: 'G-8/3, Islamabad', latitude: 33.6951200, longitude: 73.0550400, sectorId: sectors[7].id, specialties: ['Advanced Trauma', 'Neurosurgery'] },
     ]);
 
 
@@ -193,16 +193,42 @@ export class SeedService implements OnModuleInit {
     }
 
     await this.ensureHqDemoUsers(city.id, sectors);
+    await this.syncHospitalCoordinates(city.id);
 
-    const count = await this.insertDemoTransits(city.id, hospitals, sectors, emergencyTypes, triageCodes, ambulances);
+    const hospitalsFresh = await this.hospitalRepo.find({ where: { cityId: city.id }, order: { name: 'ASC' } });
+    const count = await this.insertDemoTransits(city.id, hospitalsFresh, sectors, emergencyTypes, triageCodes, ambulances);
 
     return {
       message: `Demo data refreshed for ${city.name}`,
       cityCode,
       transits: count,
-      hospitals: hospitals.length,
+      hospitals: hospitalsFresh.length,
       ambulances: ambulances.length,
     };
+  }
+
+  /** Keep ER GPS up to date for driver shortest-path routing */
+  private async syncHospitalCoordinates(cityId: string) {
+    const coords: Record<string, { latitude: number; longitude: number; address?: string }> = {
+      Mayo: { latitude: 31.57045, longitude: 74.30892, address: 'Hospital Road, Anarkali, Lahore' },
+      Jinnah: { latitude: 31.48472, longitude: 74.30158, address: 'Usmani Gate Rd, Lahore' },
+      Services: { latitude: 31.53891, longitude: 74.33364, address: 'Jail Road, Lahore' },
+      General: { latitude: 31.49125, longitude: 74.31688, address: 'Ferozepur Road, Lahore' },
+      Shifa: { latitude: 33.66305, longitude: 73.06521 },
+      PIMS: { latitude: 33.69512, longitude: 73.05504 },
+    };
+
+    const list = await this.hospitalRepo.find({ where: { cityId } });
+    for (const h of list) {
+      const key = Object.keys(coords).find((k) => h.name.includes(k));
+      if (!key) continue;
+      const c = coords[key];
+      await this.hospitalRepo.update(h.id, {
+        latitude: c.latitude,
+        longitude: c.longitude,
+        ...(c.address ? { address: c.address } : {}),
+      });
+    }
   }
 
   private async ensureHqDemoUsers(cityId: string, sectors: Sector[]) {

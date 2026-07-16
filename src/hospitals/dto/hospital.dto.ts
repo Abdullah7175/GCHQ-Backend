@@ -1,4 +1,5 @@
 import { IsArray, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateHospitalDto {
   @IsString()
@@ -11,25 +12,17 @@ export class CreateHospitalDto {
   @IsString()
   address?: string;
 
-  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
-  latitude?: number;
+  latitude: number;
 
-  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
-  longitude?: number;
+  longitude: number;
 
   @IsOptional()
   @IsUUID()
   sectorId?: string;
-
-  @IsOptional()
-  @IsNumber()
-  bedCapacity?: number;
-
-  @IsOptional()
-  @IsNumber()
-  erBays?: number;
 
   @IsOptional()
   @IsArray()
@@ -47,10 +40,12 @@ export class UpdateHospitalDto {
   address?: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   latitude?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   longitude?: number;
 
@@ -59,16 +54,7 @@ export class UpdateHospitalDto {
   sectorId?: string;
 
   @IsOptional()
-  @IsNumber()
-  bedCapacity?: number;
-
-  @IsOptional()
-  @IsNumber()
-  erBays?: number;
-
-  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   specialties?: string[];
 }
-

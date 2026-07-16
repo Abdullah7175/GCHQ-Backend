@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, OnModuleInit, OnModuleDestroy, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull, In } from 'typeorm';
 import { Ambulance } from './ambulance.entity';
@@ -123,28 +123,102 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
   }
 
   async updateGps(id: string, dto: UpdateGpsDto, transitId?: string) {
-    // 1. Instantly update the ambulance current coordinate row using faster update method
+    const lat = Number(dto.latitude);
+    const lng = Number(dto.longitude);
+    const speed = dto.speed != null ? Number(dto.speed) : 0;
+    const heading = dto.heading != null ? Number(dto.heading) : null;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new BadRequestException('Invalid latitude/longitude');
+    }
+
+    // Always persist live position on the ambulance row (what HQ/admin maps read as fleet GPS)
     await this.ambulanceRepo.update(id, {
-      currentLat: dto.latitude,
-      currentLng: dto.longitude,
-      currentSpeed: dto.speed ?? 0,
+      currentLat: lat,
+      currentLng: lng,
+      currentSpeed: Number.isFinite(speed) ? speed : 0,
     });
 
     const ambulance = await this.findOne(id);
 
-    // 2. Delegate GPS log buffering and geofencing calculations to GpsCacheService
+    // Also push into active transit + GPS log buffer + geofence
     const transit = await this.gpsCacheService.update({
       ambulanceId: id,
       transitId: transitId ?? null,
-      latitude: dto.latitude,
-      longitude: dto.longitude,
-      speed: dto.speed ?? 0,
-      heading: dto.heading ?? null,
+      latitude: lat,
+      longitude: lng,
+      speed: Number.isFinite(speed) ? speed : 0,
+      heading,
       recordedAt: new Date(),
     });
 
-    this.events.broadcastGpsUpdate({ ambulanceId: id, ...dto, transitId: transit?.id ?? transitId });
-    return { ambulance, transit };
+    this.events.broadcastGpsUpdate({
+      ambulanceId: id,
+      transitId: transit?.id ?? transitId ?? null,
+      latitude: lat,
+      longitude: lng,
+      speed: Number.isFinite(speed) ? speed : 0,
+      heading,
+    });
+    this.events.broadcastDashboardRefresh();
+
+    return {
+      ok: true,
+      ambulance: {
+        id: ambulance.id,
+        unitNumber: ambulance.unitNumber,
+        currentLat: Number(ambulance.currentLat),
+        currentLng: Number(ambulance.currentLng),
+        currentSpeed: Number(ambulance.currentSpeed),
+        status: ambulance.status,
+      },
+      transit: transit
+        ? {
+            id: transit.id,
+            transitId: transit.transitId,
+            status: transit.status,
+            currentLat: Number(transit.currentLat),
+            currentLng: Number(transit.currentLng),
+            etaMinutes: transit.etaMinutes,
+          }
+        : null,
+      recordedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Assigned unit for the logged-in paramedic (driverId = user id) */
+  async findMine(driverId: string) {
+    const ambulance = await this.ambulanceRepo.findOne({
+      where: { driverId },
+      relations: { provider: true, city: true, driver: true } as never,
+    });
+    if (!ambulance) return null;
+
+    const activeTransit = await this.transitsService.findActiveForAmbulance(ambulance.id);
+    return {
+      ambulance: {
+        id: ambulance.id,
+        unitNumber: ambulance.unitNumber,
+        status: ambulance.status,
+        cityId: ambulance.cityId,
+        providerId: ambulance.providerId,
+        currentLat: ambulance.currentLat != null ? Number(ambulance.currentLat) : null,
+        currentLng: ambulance.currentLng != null ? Number(ambulance.currentLng) : null,
+        currentSpeed: Number(ambulance.currentSpeed ?? 0),
+        provider: ambulance.provider,
+        city: ambulance.city,
+      },
+      activeTransit: activeTransit
+        ? {
+            id: activeTransit.id,
+            transitId: activeTransit.transitId,
+            status: activeTransit.status,
+            hospital: activeTransit.hospital,
+            currentLat: activeTransit.currentLat != null ? Number(activeTransit.currentLat) : null,
+            currentLng: activeTransit.currentLng != null ? Number(activeTransit.currentLng) : null,
+          }
+        : null,
+    };
   }
 
   findAvailable(cityId?: string) {

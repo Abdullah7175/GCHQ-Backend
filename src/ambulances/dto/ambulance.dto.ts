@@ -1,4 +1,5 @@
 import { IsEnum, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
 import { AmbulanceStatus } from '../../common/enums';
 
 export class CreateAmbulanceDto {
@@ -16,10 +17,12 @@ export class CreateAmbulanceDto {
   status?: AmbulanceStatus;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   currentLat?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   currentLng?: number;
 
@@ -50,14 +53,17 @@ export class UpdateAmbulanceDto {
   status?: AmbulanceStatus;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   currentLat?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   currentLng?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   currentSpeed?: number;
 
@@ -74,18 +80,28 @@ export class UpdateAmbulanceDto {
   gpsHeaders?: string;
 }
 
+/** Live GPS ping from driver mobile / web — call every ~15 seconds */
 export class UpdateGpsDto {
+  @Type(() => Number)
   @IsNumber()
   latitude: number;
 
+  @Type(() => Number)
   @IsNumber()
   longitude: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   speed?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   heading?: number;
+
+  /** Optional active trip id; server also auto-attaches the ambulance's open transit */
+  @IsOptional()
+  @IsUUID()
+  transitId?: string;
 }
