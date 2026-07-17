@@ -66,5 +66,17 @@ export class User extends BaseEntity {
 
   @Column({ name: 'api_key', type: 'varchar', unique: true, nullable: true })
   apiKey: string | null;
+
+  /** Failed login counter — reset on successful login (OWASP brute-force control) */
+  @Column({ name: 'failed_login_attempts', type: 'int', default: 0 })
+  failedLoginAttempts: number;
+
+  /** Soft lock until this timestamp after too many failed logins */
+  @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
+  lockedUntil: Date | null;
+
+  /** Bumped on logout / password change so outstanding JWTs become invalid */
+  @Column({ name: 'token_version', type: 'int', default: 0 })
+  tokenVersion: number;
 }
 

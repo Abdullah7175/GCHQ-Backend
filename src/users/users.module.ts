@@ -17,7 +17,11 @@ import { UsersController } from './users.controller';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '7d' as const },
+        signOptions: {
+          expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '8h') as never,
+          issuer: 'gchq-api',
+          audience: 'gchq-clients',
+        },
       }),
     }),
   ],

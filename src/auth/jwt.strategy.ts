@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { UsersService } from '../users/users.service';
 
 export interface JwtPayload {
   sub: string;
@@ -12,19 +13,48 @@ export interface JwtPayload {
   providerId?: string;
   sectorId?: string;
   isCityOverseer?: boolean;
+  tokenVersion?: number;
 }
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly usersService: UsersService,
+  ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req) => {
+          if (!req?.cookies) return null;
+          return req.cookies['gchq_token'] || null;
+        },
+      ]),
       ignoreExpiration: false,
       secretOrKey: config.get<string>('JWT_SECRET')!,
+      issuer: 'gchq-api',
+      audience: 'gchq-clients',
     });
   }
 
-  validate(payload: JwtPayload) {
-    return payload;
+  async validate(payload: JwtPayload) {
+    const user = await this.usersService.findRawById(payload.sub);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Session expired');
+    }
+    if ((payload.tokenVersion ?? 0) !== (user.tokenVersion ?? 0)) {
+      throw new UnauthorizedException('Session revoked — please sign in again');
+    }
+    return {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      cityId: user.cityId,
+      hospitalId: user.hospitalId,
+      providerId: user.providerId,
+      sectorId: user.sectorId,
+      isCityOverseer: user.isCityOverseer,
+      tokenVersion: user.tokenVersion,
+    };
   }
 }

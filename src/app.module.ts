@@ -21,10 +21,23 @@ import { SeedModule } from './seed/seed.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1_000,
+        limit: 20,
+      },
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 120,
+      },
+      {
+        name: 'long',
+        ttl: 900_000,
+        limit: 1_000,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

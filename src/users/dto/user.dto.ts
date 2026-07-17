@@ -4,21 +4,26 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  MaxLength,
   IsUUID,
   IsBoolean,
   IsArray,
+  Matches,
 } from 'class-validator';
 import { UserRole } from '../../common/enums';
 
 export class CreateUserDto {
   @IsEmail()
+  @MaxLength(254)
   email: string;
 
   @IsString()
   @MinLength(6)
+  @MaxLength(128)
   password: string;
 
   @IsString()
+  @MaxLength(120)
   name: string;
 
   @IsEnum(UserRole)
@@ -52,21 +57,25 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   apiKey?: string;
 }
 
 export class UpdateUserDto {
   @IsOptional()
   @IsEmail()
+  @MaxLength(254)
   email?: string;
 
   @IsOptional()
   @IsString()
   @MinLength(6)
+  @MaxLength(128)
   password?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
   name?: string;
 
   @IsOptional()
@@ -104,13 +113,20 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(128)
   apiKey?: string;
 }
 
 export class LoginDto {
   @IsEmail()
+  @MaxLength(254)
   email: string;
 
   @IsString()
+  @MinLength(6)
+  @MaxLength(128)
+  @Matches(/^[a-fA-F0-9]{32}$|^[\S]{6,128}$/, {
+    message: 'Invalid credentials payload',
+  })
   password: string;
 }
