@@ -41,12 +41,7 @@ export class HospitalsService extends BaseCrudService<Hospital> {
   ) {
     const hospitals = await this.hospitalRepo
       .createQueryBuilder('hospital')
-      .innerJoinAndSelect(
-        'hospital.emergencyTypes',
-        'emergencyType',
-        'emergencyType.id = :emergencyTypeId',
-        { emergencyTypeId },
-      )
+      .leftJoinAndSelect('hospital.emergencyTypes', 'emergencyType')
       .leftJoinAndSelect('hospital.sector', 'sector')
       .where('hospital.cityId = :cityId', { cityId })
       .orderBy('hospital.name', 'ASC')
@@ -54,24 +49,30 @@ export class HospitalsService extends BaseCrudService<Hospital> {
 
     const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude);
     const choices = hospitals
-      .map((hospital) => ({
-        id: hospital.id,
-        name: hospital.name,
-        address: hospital.address,
-        latitude: Number(hospital.latitude),
-        longitude: Number(hospital.longitude),
-        sectorId: hospital.sectorId,
-        sector: hospital.sector,
-        emergencyTypes: hospital.emergencyTypes,
-        distanceKm: hasLocation
-          ? this.distanceKm(
-              latitude as number,
-              longitude as number,
-              Number(hospital.latitude),
-              Number(hospital.longitude),
-            )
-          : null,
-      }))
+      .map((hospital) => {
+        const catersSelectedEmergency = hospital.emergencyTypes.some(
+          (type) => type.id === emergencyTypeId,
+        );
+        return {
+          id: hospital.id,
+          name: hospital.name,
+          address: hospital.address,
+          latitude: Number(hospital.latitude),
+          longitude: Number(hospital.longitude),
+          sectorId: hospital.sectorId,
+          sector: hospital.sector,
+          emergencyTypes: hospital.emergencyTypes,
+          catersSelectedEmergency,
+          distanceKm: hasLocation
+            ? this.distanceKm(
+                latitude as number,
+                longitude as number,
+                Number(hospital.latitude),
+                Number(hospital.longitude),
+              )
+            : null,
+        };
+      })
       .sort((a, b) => {
         if (a.distanceKm == null || b.distanceKm == null) {
           return a.name.localeCompare(b.name);
@@ -79,13 +80,20 @@ export class HospitalsService extends BaseCrudService<Hospital> {
         return a.distanceKm - b.distanceKm;
       });
 
+    const recommended =
+      choices.find((hospital) => hospital.catersSelectedEmergency) ??
+      choices[0];
+
     return {
       emergencyTypeId,
       cityId,
-      recommendedHospitalId: choices[0]?.id ?? null,
+      recommendedHospitalId: recommended?.id ?? null,
       selectionReason: hasLocation
-        ? 'Nearest hospital in this city that caters the selected emergency type'
-        : 'First eligible hospital alphabetically; send latitude and longitude for nearest recommendation',
+        ? recommended?.catersSelectedEmergency
+          ? 'Nearest hospital that caters the selected emergency type'
+          : 'Nearest hospital; no hospital is configured for the selected emergency type'
+        : 'First suitable hospital alphabetically; send latitude and longitude for nearest recommendation',
+      patientConsentOverrideAllowed: true,
       hospitals: choices,
     };
   }

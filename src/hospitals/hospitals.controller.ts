@@ -20,7 +20,7 @@ export class HospitalsController {
     return this.service.findByCity(cityId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
   }
 
-  /** Driver app: eligible hospitals, nearest/recommended first. */
+  /** Driver app: all city hospitals nearest-first, with capability/recommendation flags. */
   @Get('suitable')
   findSuitable(@Query() query: SuitableHospitalsQueryDto) {
     return this.service.findSuitable(

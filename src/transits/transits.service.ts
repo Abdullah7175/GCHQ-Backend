@@ -140,15 +140,10 @@ export class TransitsService extends BaseCrudService<Transit> {
     }
   }
 
-  private async eligibleHospitals(cityId: string, emergencyTypeId: string): Promise<Hospital[]> {
+  private async cityHospitals(cityId: string): Promise<Hospital[]> {
     return this.hospitalRepo
       .createQueryBuilder('hospital')
-      .innerJoinAndSelect(
-        'hospital.emergencyTypes',
-        'emergencyType',
-        'emergencyType.id = :emergencyTypeId',
-        { emergencyTypeId },
-      )
+      .leftJoinAndSelect('hospital.emergencyTypes', 'emergencyType')
       .where('hospital.cityId = :cityId', { cityId })
       .orderBy('hospital.name', 'ASC')
       .getMany();
@@ -180,19 +175,17 @@ export class TransitsService extends BaseCrudService<Transit> {
       throw new BadRequestException('Ambulance is not available');
     }
 
-    const eligible = await this.eligibleHospitals(ambulance.cityId, dto.emergencyTypeId);
-    if (!eligible.length) {
-      throw new BadRequestException(
-        'No hospital in this city caters the selected emergency type',
-      );
+    const hospitals = await this.cityHospitals(ambulance.cityId);
+    if (!hospitals.length) {
+      throw new BadRequestException('No hospital is configured in the ambulance city');
     }
 
     const requestedHospital = dto.hospitalId
-      ? eligible.find((candidate) => candidate.id === dto.hospitalId)
+      ? hospitals.find((candidate) => candidate.id === dto.hospitalId)
       : undefined;
     if (dto.hospitalId && !requestedHospital) {
       throw new BadRequestException(
-        'Selected hospital does not cater this emergency type or belongs to another city',
+        'Selected hospital does not belong to the ambulance city',
       );
     }
 
@@ -203,11 +196,18 @@ export class TransitsService extends BaseCrudService<Transit> {
       sourceLng != null &&
       Number.isFinite(Number(sourceLat)) &&
       Number.isFinite(Number(sourceLng));
-    const hospital = requestedHospital ?? [...eligible].sort(
+    const sortedByDistance = [...hospitals].sort(
       (a, b) =>
         this.hospitalDistanceKm(a, sourceLat, sourceLng) -
         this.hospitalDistanceKm(b, sourceLat, sourceLng),
-    )[0];
+    );
+    const capableHospitals = sortedByDistance.filter((candidate) =>
+      candidate.emergencyTypes.some((type) => type.id === dto.emergencyTypeId),
+    );
+    const hospital =
+      requestedHospital ??
+      capableHospitals[0] ??
+      sortedByDistance[0];
 
     await this.assertCapacity(hospital.cityId);
 
@@ -237,12 +237,24 @@ export class TransitsService extends BaseCrudService<Transit> {
       ...full,
       hospitalSelection: {
         automatic: !dto.hospitalId,
-        eligibleHospitalCount: eligible.length,
+        availableHospitalCount: hospitals.length,
+        capableHospitalCount: capableHospitals.length,
+        selectedHospitalCatersEmergency: hospital.emergencyTypes.some(
+          (type) => type.id === dto.emergencyTypeId,
+        ),
+        patientConsentOverride: Boolean(
+          requestedHospital &&
+          !requestedHospital.emergencyTypes.some((type) => type.id === dto.emergencyTypeId),
+        ),
         reason: dto.hospitalId
-          ? 'Hospital selected by the mobile user from eligible hospitals'
+          ? 'Hospital selected by the mobile user; patient-consent override is allowed'
           : hasSourceLocation
-            ? 'Nearest hospital that caters the selected emergency type'
-            : 'First eligible hospital alphabetically because no origin GPS was supplied',
+            ? capableHospitals.length
+              ? 'Nearest hospital that caters the selected emergency type'
+              : 'Nearest hospital because no hospital is configured for this emergency type'
+            : capableHospitals.length
+              ? 'First capable hospital alphabetically because no origin GPS was supplied'
+              : 'First city hospital alphabetically because no origin GPS was supplied',
       },
     };
   }
