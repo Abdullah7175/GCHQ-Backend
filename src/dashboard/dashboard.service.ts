@@ -111,6 +111,7 @@ export class DashboardService {
         hospital: true,
         sector: true,
         triageCode: true,
+        emergencyType: true,
       } as never,
       order: { createdAt: 'DESC' },
     });
