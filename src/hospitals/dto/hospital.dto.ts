@@ -74,3 +74,21 @@ export class UpdateHospitalDto {
   @IsUUID('all', { each: true })
   emergencyTypeIds?: string[];
 }
+
+export class SuitableHospitalsQueryDto {
+  @IsUUID()
+  cityId: string;
+
+  @IsUUID()
+  emergencyTypeId: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+}

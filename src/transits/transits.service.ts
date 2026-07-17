@@ -140,6 +140,39 @@ export class TransitsService extends BaseCrudService<Transit> {
     }
   }
 
+  private async eligibleHospitals(cityId: string, emergencyTypeId: string): Promise<Hospital[]> {
+    return this.hospitalRepo
+      .createQueryBuilder('hospital')
+      .innerJoinAndSelect(
+        'hospital.emergencyTypes',
+        'emergencyType',
+        'emergencyType.id = :emergencyTypeId',
+        { emergencyTypeId },
+      )
+      .where('hospital.cityId = :cityId', { cityId })
+      .orderBy('hospital.name', 'ASC')
+      .getMany();
+  }
+
+  private hospitalDistanceKm(
+    hospital: Hospital,
+    latitude?: number | null,
+    longitude?: number | null,
+  ): number {
+    if (latitude == null || longitude == null) return Number.POSITIVE_INFINITY;
+    const toRadians = (degrees: number) => degrees * Math.PI / 180;
+    const hospitalLat = Number(hospital.latitude);
+    const hospitalLng = Number(hospital.longitude);
+    const dLat = toRadians(hospitalLat - latitude);
+    const dLng = toRadians(hospitalLng - longitude);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRadians(latitude)) *
+        Math.cos(toRadians(hospitalLat)) *
+        Math.sin(dLng / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   async create(dto: CreateTransitDto) {
     const ambulance = await this.ambulanceRepo.findOne({ where: { id: dto.ambulanceId } });
     if (!ambulance) throw new BadRequestException('Ambulance not found');
@@ -147,11 +180,34 @@ export class TransitsService extends BaseCrudService<Transit> {
       throw new BadRequestException('Ambulance is not available');
     }
 
-    const hospital = await this.hospitalRepo.findOne({ where: { id: dto.hospitalId } });
-    if (!hospital) throw new BadRequestException('Hospital not found');
-    if (ambulance.cityId !== hospital.cityId) {
-      throw new BadRequestException('Ambulance and hospital must belong to the same city');
+    const eligible = await this.eligibleHospitals(ambulance.cityId, dto.emergencyTypeId);
+    if (!eligible.length) {
+      throw new BadRequestException(
+        'No hospital in this city caters the selected emergency type',
+      );
     }
+
+    const requestedHospital = dto.hospitalId
+      ? eligible.find((candidate) => candidate.id === dto.hospitalId)
+      : undefined;
+    if (dto.hospitalId && !requestedHospital) {
+      throw new BadRequestException(
+        'Selected hospital does not cater this emergency type or belongs to another city',
+      );
+    }
+
+    const sourceLat = dto.originLat ?? ambulance.currentLat;
+    const sourceLng = dto.originLng ?? ambulance.currentLng;
+    const hasSourceLocation =
+      sourceLat != null &&
+      sourceLng != null &&
+      Number.isFinite(Number(sourceLat)) &&
+      Number.isFinite(Number(sourceLng));
+    const hospital = requestedHospital ?? [...eligible].sort(
+      (a, b) =>
+        this.hospitalDistanceKm(a, sourceLat, sourceLng) -
+        this.hospitalDistanceKm(b, sourceLat, sourceLng),
+    )[0];
 
     await this.assertCapacity(hospital.cityId);
 
@@ -162,6 +218,7 @@ export class TransitsService extends BaseCrudService<Transit> {
 
     const transit = await super.create({
       ...dto,
+      hospitalId: hospital.id,
       cityId: hospital.cityId,
       sectorId,
       transitId,
@@ -176,7 +233,18 @@ export class TransitsService extends BaseCrudService<Transit> {
 
     const full = await this.findOne(transit.id);
     this.events.broadcastTransitUpdate(full);
-    return full;
+    return {
+      ...full,
+      hospitalSelection: {
+        automatic: !dto.hospitalId,
+        eligibleHospitalCount: eligible.length,
+        reason: dto.hospitalId
+          ? 'Hospital selected by the mobile user from eligible hospitals'
+          : hasSourceLocation
+            ? 'Nearest hospital that caters the selected emergency type'
+            : 'First eligible hospital alphabetically because no origin GPS was supplied',
+      },
+    };
   }
 
   async start(id: string, lat?: number, lng?: number) {

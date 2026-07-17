@@ -1,6 +1,10 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { HospitalsService } from './hospitals.service';
-import { CreateHospitalDto, UpdateHospitalDto } from './dto/hospital.dto';
+import {
+  CreateHospitalDto,
+  SuitableHospitalsQueryDto,
+  UpdateHospitalDto,
+} from './dto/hospital.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -14,6 +18,17 @@ export class HospitalsController {
   @Get()
   findAll(@Query('cityId') cityId?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
     return this.service.findByCity(cityId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  }
+
+  /** Driver app: eligible hospitals, nearest/recommended first. */
+  @Get('suitable')
+  findSuitable(@Query() query: SuitableHospitalsQueryDto) {
+    return this.service.findSuitable(
+      query.cityId,
+      query.emergencyTypeId,
+      query.latitude,
+      query.longitude,
+    );
   }
 
   @Get(':id')

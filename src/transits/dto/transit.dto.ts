@@ -6,8 +6,10 @@ export class CreateTransitDto {
   @IsUUID()
   ambulanceId: string;
 
+  /** Optional: backend selects the nearest capable hospital when omitted. */
+  @IsOptional()
   @IsUUID()
-  hospitalId: string;
+  hospitalId?: string;
 
   @IsUUID()
   emergencyTypeId: string;
