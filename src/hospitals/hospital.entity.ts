@@ -1,9 +1,10 @@
-import { Entity, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToOne, ManyToMany, JoinColumn, JoinTable } from 'typeorm';
 import { BaseEntity } from '../common/entities/base.entity';
 import { City } from '../cities/city.entity';
 import { Sector } from '../sectors/sector.entity';
 import { Transit } from '../transits/transit.entity';
 import { User } from '../users/user.entity';
+import { EmergencyType } from '../emergency-types/emergency-type.entity';
 
 @Entity('hospitals')
 export class Hospital extends BaseEntity {
@@ -36,6 +37,15 @@ export class Hospital extends BaseEntity {
 
   @Column({ type: 'simple-array', nullable: true })
   specialties: string[] | null;
+
+  /** Emergency categories this hospital can cater (burn, cardiac, trauma…) */
+  @ManyToMany(() => EmergencyType)
+  @JoinTable({
+    name: 'hospital_emergency_types',
+    joinColumn: { name: 'hospital_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'emergency_type_id', referencedColumnName: 'id' },
+  })
+  emergencyTypes: EmergencyType[];
 
   @OneToMany(() => Transit, (transit) => transit.hospital)
   transits: Transit[];

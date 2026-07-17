@@ -28,6 +28,12 @@ export class CreateHospitalDto {
   @IsArray()
   @IsString({ each: true })
   specialties?: string[];
+
+  /** Emergency categories this hospital caters (many-to-many) */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  emergencyTypeIds?: string[];
 }
 
 export class UpdateHospitalDto {
@@ -61,4 +67,10 @@ export class UpdateHospitalDto {
   @IsArray()
   @IsString({ each: true })
   specialties?: string[];
+
+  /** Emergency categories this hospital caters (many-to-many) */
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  emergencyTypeIds?: string[];
 }
