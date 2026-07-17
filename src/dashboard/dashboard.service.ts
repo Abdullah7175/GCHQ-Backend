@@ -230,10 +230,15 @@ export class DashboardService {
     };
   }
 
-  async getVvipDashboard(cityId?: string) {
+  async getVvipDashboard(cityId?: string, permittedProviderIds?: string[]) {
     const cities = cityId
       ? [await this.cityRepo.findOneOrFail({ where: { id: cityId } })]
       : await this.cityRepo.find({ where: { isActive: true }, order: { name: 'ASC' } });
+
+    const providerFilter =
+      permittedProviderIds && permittedProviderIds.length > 0
+        ? { ambulance: { providerId: In(permittedProviderIds) } }
+        : {};
 
     const citySummaries = await Promise.all(
       cities.map(async (city) => {
@@ -242,6 +247,7 @@ export class DashboardService {
           where: {
             cityId: city.id,
             status: In([TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]),
+            ...providerFilter,
           },
           relations: {
             ambulance: { provider: true },
@@ -253,11 +259,17 @@ export class DashboardService {
           order: { createdAt: 'DESC' },
         });
 
-        const todayTransits = await this.transitRepo.find({
-          where: { cityId: city.id, createdAt: this.todayRange() },
-        });
+        const todayQb = this.transitRepo
+          .createQueryBuilder('t')
+          .leftJoin('t.ambulance', 'a')
+          .where('t.city_id = :cityId', { cityId: city.id })
+          .andWhere('t.created_at >= CURRENT_DATE');
+        if (permittedProviderIds && permittedProviderIds.length > 0) {
+          todayQb.andWhere('a.provider_id IN (:...pids)', { pids: permittedProviderIds });
+        }
+        const todayTransits = await todayQb.getMany();
 
-        const providerTrips = await this.transitRepo
+        const providerTripsQb = this.transitRepo
           .createQueryBuilder('t')
           .leftJoin('t.ambulance', 'a')
           .leftJoin('a.provider', 'p')
@@ -272,12 +284,16 @@ export class DashboardService {
           .addGroupBy('p.name')
           .addGroupBy('p.code')
           .addGroupBy('p.shape')
-          .addGroupBy('p.color')
-          .getRawMany();
+          .addGroupBy('p.color');
+        if (permittedProviderIds && permittedProviderIds.length > 0) {
+          providerTripsQb.andWhere('a.provider_id IN (:...pids)', { pids: permittedProviderIds });
+        }
+        const providerTrips = await providerTripsQb.getRawMany();
 
-        const hospitalLoad = await this.transitRepo
+        const hospitalLoadQb = this.transitRepo
           .createQueryBuilder('t')
           .leftJoin('t.hospital', 'h')
+          .leftJoin('t.ambulance', 'a')
           .select('h.name', 'hospital')
           .addSelect('COUNT(*)', 'count')
           .where('t.city_id = :cityId', { cityId: city.id })
@@ -285,13 +301,17 @@ export class DashboardService {
           .andWhere('t.completed_at >= CURRENT_DATE')
           .groupBy('h.id')
           .addGroupBy('h.name')
-          .orderBy('count', 'DESC')
-          .getRawMany();
+          .orderBy('count', 'DESC');
+        if (permittedProviderIds && permittedProviderIds.length > 0) {
+          hospitalLoadQb.andWhere('a.provider_id IN (:...pids)', { pids: permittedProviderIds });
+        }
+        const hospitalLoad = await hospitalLoadQb.getRawMany();
 
-        const hospitalEmergencies = await this.transitRepo
+        const hospitalEmergenciesQb = this.transitRepo
           .createQueryBuilder('t')
           .leftJoin('t.hospital', 'h')
           .leftJoin('t.emergencyType', 'et')
+          .leftJoin('t.ambulance', 'a')
           .select('h.name', 'hospital')
           .addSelect('et.name', 'emergencyType')
           .addSelect('et.code', 'code')
@@ -302,13 +322,17 @@ export class DashboardService {
           .addGroupBy('h.name')
           .addGroupBy('et.id')
           .addGroupBy('et.name')
-          .addGroupBy('et.code')
-          .getRawMany();
+          .addGroupBy('et.code');
+        if (permittedProviderIds && permittedProviderIds.length > 0) {
+          hospitalEmergenciesQb.andWhere('a.provider_id IN (:...pids)', { pids: permittedProviderIds });
+        }
+        const hospitalEmergencies = await hospitalEmergenciesQb.getRawMany();
 
-        const sectorEmergencies = await this.transitRepo
+        const sectorEmergenciesQb = this.transitRepo
           .createQueryBuilder('t')
           .leftJoin('t.sector', 's')
           .leftJoin('t.emergencyType', 'et')
+          .leftJoin('t.ambulance', 'a')
           .select('s.name', 'sectorName')
           .addSelect('et.name', 'emergencyType')
           .addSelect('et.code', 'code')
@@ -319,8 +343,11 @@ export class DashboardService {
           .addGroupBy('s.name')
           .addGroupBy('et.id')
           .addGroupBy('et.name')
-          .addGroupBy('et.code')
-          .getRawMany();
+          .addGroupBy('et.code');
+        if (permittedProviderIds && permittedProviderIds.length > 0) {
+          sectorEmergenciesQb.andWhere('a.provider_id IN (:...pids)', { pids: permittedProviderIds });
+        }
+        const sectorEmergencies = await sectorEmergenciesQb.getRawMany();
 
         const completedToday = todayTransits.filter((t) => t.status === TransitStatus.COMPLETED);
         const enRouteToday = todayTransits.filter((t) =>

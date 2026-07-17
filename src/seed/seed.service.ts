@@ -166,7 +166,7 @@ export class SeedService implements OnModuleInit {
       { email: 'hospital@jinnah.pk', password, name: 'Jinnah ER Lead', role: UserRole.HOSPITAL, cityId: lahore.id, hospitalId: hospitals[1].id },
       { email: 'safecity@psca.pk', password, name: 'Traffic Controller', role: UserRole.SAFE_CITY, cityId: lahore.id, apiKey: 'key_safecity_controller' },
       { email: 'hq@1122.pk', password, name: 'City HQ Overseer', role: UserRole.HQ_1122, cityId: lahore.id, isCityOverseer: true, apiKey: 'key_hq_overseer' },
-      { email: 'vvip@gov.pk', password, name: 'VVIP Command', role: UserRole.VVIP },
+      { email: 'vvip@gov.pk', password, name: 'VVIP Command', role: UserRole.VVIP, cityId: lahore.id },
       { email: 'driver@1122.pk', password, name: 'Paramedic Ali', role: UserRole.PARAMEDIC, cityId: lahore.id, providerId: providers[0].id, apiKey: 'key_paramedic_ali' },
       { email: 'driver2@1122.pk', password, name: 'Paramedic Sara', role: UserRole.PARAMEDIC, cityId: lahore.id, providerId: providers[1].id },
     ]);

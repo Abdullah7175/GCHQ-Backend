@@ -50,8 +50,13 @@ export class DashboardController {
 
   @Get('vvip')
   @RequirePermissions(Permission.VIEW_DASHBOARD_VVIP)
-  getVvip(@Req() req: { user: JwtPayload }, @Query('cityId') cityId?: string) {
-    return this.service.getVvipDashboard(resolveCityId(req.user, cityId));
+  async getVvip(@Req() req: { user: JwtPayload }, @Query('cityId') cityId?: string) {
+    const user = await this.usersService.findOne(req.user.sub);
+    // City-assigned VVIP must stay in their city; unassigned VVIP/admin can overview
+    const resolved = user.cityId
+      ? requireCityId(req.user, cityId)
+      : resolveCityId(req.user, cityId);
+    return this.service.getVvipDashboard(resolved, user.permittedProviderIds ?? undefined);
   }
 }
 
