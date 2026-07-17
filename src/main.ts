@@ -7,6 +7,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // The Next.js same-origin proxy and (optionally) nginx run on this host —
+  // trust loopback so req.ip resolves the forwarded client IP for rate limiting.
+  app.getHttpAdapter().getInstance().set('trust proxy', 'loopback');
+
   app.use(
     helmet({
       contentSecurityPolicy: false,

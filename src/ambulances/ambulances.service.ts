@@ -156,12 +156,13 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     this.events.broadcastGpsUpdate({
       ambulanceId: id,
       transitId: transit?.id ?? transitId ?? null,
+      cityId: ambulance.cityId,
       latitude: lat,
       longitude: lng,
       speed: Number.isFinite(speed) ? speed : 0,
       heading,
     });
-    this.events.broadcastDashboardRefresh();
+    this.events.broadcastDashboardRefresh(ambulance.cityId);
 
     return {
       ok: true,

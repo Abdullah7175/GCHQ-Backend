@@ -19,7 +19,7 @@ export class AuthController {
 
   /** Strict login rate limit — OWASP brute-force / credential stuffing control */
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 10, ttl: 60_000 }, short: { limit: 3, ttl: 1_000 } })
   @Post('login')
   @HttpCode(200)
   login(@Body() dto: LoginDto) {

@@ -429,6 +429,7 @@ export class TransitsService extends BaseCrudService<Transit> {
     this.events.broadcastGpsUpdate({
       ambulanceId,
       transitId: full.id,
+      cityId: full.cityId,
       latitude: lat,
       longitude: lng,
       speed,
@@ -485,7 +486,7 @@ export class TransitsService extends BaseCrudService<Transit> {
     await this.transitRepo.update(id, patch as never);
     const full = await this.findOne(id);
     this.events.broadcastTransitUpdate(full);
-    this.events.broadcastDashboardRefresh();
+    this.events.broadcastDashboardRefresh(full.cityId);
     return full;
   }
 
@@ -511,6 +512,6 @@ export class TransitsService extends BaseCrudService<Transit> {
         );
       }
     });
-    this.events.broadcastDashboardRefresh();
+    this.events.broadcastDashboardRefresh(transit.cityId);
   }
 }
