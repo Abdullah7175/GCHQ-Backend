@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   HttpException,
   HttpStatus,
@@ -20,6 +21,8 @@ const LOCK_MINUTES = 15;
 
 @Injectable()
 export class UsersService extends BaseCrudService<User> {
+  private readonly logger = new Logger('Auth');
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -91,11 +94,13 @@ export class UsersService extends BaseCrudService<User> {
     // Constant-looking failure path (OWASP A07 — credential stuffing)
     if (!user || !user.isActive) {
       await this.dummyCompare(dto.password);
+      this.logger.warn(`Login failed (unknown or inactive account): ${email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
       const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+      this.logger.warn(`Login blocked (account locked): ${email}, ${minutes} min remaining`);
       throw new HttpException(
         `Account temporarily locked. Try again in ${minutes} minute(s).`,
         HttpStatus.TOO_MANY_REQUESTS,
@@ -109,6 +114,9 @@ export class UsersService extends BaseCrudService<User> {
       if (attempts >= MAX_FAILED_ATTEMPTS) {
         patch.lockedUntil = new Date(Date.now() + LOCK_MINUTES * 60_000);
         patch.failedLoginAttempts = 0;
+        this.logger.warn(`Account locked for ${LOCK_MINUTES} min after ${attempts} failures: ${email}`);
+      } else {
+        this.logger.warn(`Login failed (wrong password, attempt ${attempts}/${MAX_FAILED_ATTEMPTS}): ${email}`);
       }
       await this.userRepo.update(user.id, patch);
       throw new UnauthorizedException('Invalid credentials');
@@ -118,6 +126,7 @@ export class UsersService extends BaseCrudService<User> {
       failedLoginAttempts: 0,
       lockedUntil: null,
     });
+    this.logger.log(`Login success: ${email} (${user.role})`);
 
     const token = this.jwtService.sign({
       sub: user.id,
@@ -146,6 +155,7 @@ export class UsersService extends BaseCrudService<User> {
     await this.userRepo.update(userId, {
       tokenVersion: (user.tokenVersion ?? 0) + 1,
     });
+    this.logger.log(`Logout (tokens revoked): ${user.email}`);
     return { message: 'Logged out successfully' };
   }
 
