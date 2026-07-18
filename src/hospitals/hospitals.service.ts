@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Hospital } from './hospital.entity';
 import { EmergencyType } from '../emergency-types/emergency-type.entity';
+import { User } from '../users/user.entity';
+import { Transit } from '../transits/transit.entity';
+import { Ambulance } from '../ambulances/ambulance.entity';
+import { AmbulanceStatus } from '../common/enums';
 import { CreateHospitalDto, UpdateHospitalDto } from './dto/hospital.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
 
@@ -138,5 +142,38 @@ export class HospitalsService extends BaseCrudService<Hospital> {
       await this.hospitalRepo.save(hospital);
     }
     return this.findOne(id);
+  }
+
+  /**
+   * Safe delete: unassign hospital users, remove related GPS + transits
+   * (freeing any attached ambulances), clear emergency-type join rows, then delete.
+   */
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+    await this.hospitalRepo.manager.transaction(async (em) => {
+      await em.update(User, { hospitalId: id }, { hospitalId: null });
+
+      const related = await em.find(Transit, {
+        where: { hospitalId: id },
+        select: { id: true, ambulanceId: true },
+      });
+
+      if (related.length > 0) {
+        const transitIds = related.map((t) => t.id);
+        const ambulanceIds = [...new Set(related.map((t) => t.ambulanceId).filter(Boolean))];
+        await em.query(`DELETE FROM gps_locations WHERE transit_id = ANY($1::uuid[])`, [transitIds]);
+        await em.delete(Transit, { hospitalId: id });
+        if (ambulanceIds.length) {
+          await em.update(
+            Ambulance,
+            { id: In(ambulanceIds) },
+            { status: AmbulanceStatus.AVAILABLE, currentSpeed: 0 },
+          );
+        }
+      }
+
+      await em.query(`DELETE FROM hospital_emergency_types WHERE hospital_id = $1`, [id]);
+      await em.delete(Hospital, { id });
+    });
   }
 }
