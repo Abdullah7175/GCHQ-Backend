@@ -264,6 +264,9 @@ export class TransitsService extends BaseCrudService<Transit> {
     if (transit.status !== TransitStatus.PENDING) {
       throw new BadRequestException('Transit already started');
     }
+    if (!transit.ambulanceId) {
+      throw new BadRequestException('Transit has no ambulance assigned');
+    }
 
     await this.ambulanceRepo.update(transit.ambulanceId, {
       status: AmbulanceStatus.EN_ROUTE,
@@ -340,10 +343,23 @@ export class TransitsService extends BaseCrudService<Transit> {
 
   async complete(id: string) {
     const transit = await this.findOne(id);
-    await this.ambulanceRepo.update(transit.ambulanceId, {
-      status: AmbulanceStatus.AVAILABLE,
-      currentSpeed: 0,
-    });
+    if (transit.status === TransitStatus.COMPLETED) {
+      return transit;
+    }
+    if (
+      transit.status !== TransitStatus.PENDING &&
+      transit.status !== TransitStatus.EN_ROUTE &&
+      transit.status !== TransitStatus.ARRIVED
+    ) {
+      throw new BadRequestException(`Cannot complete a transit in status "${transit.status}"`);
+    }
+
+    if (transit.ambulanceId) {
+      await this.ambulanceRepo.update(transit.ambulanceId, {
+        status: AmbulanceStatus.AVAILABLE,
+        currentSpeed: 0,
+      });
+    }
 
     const updated = await super.update(id, {
       status: TransitStatus.COMPLETED,
@@ -351,16 +367,21 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentSpeed: 0,
     });
 
+    // Row stays in `transits` with status=completed — never deleted on complete
     const full = await this.findOne(updated.id);
     this.events.broadcastTransitUpdate(full);
+    this.events.broadcastDashboardRefresh(full.cityId);
     return full;
   }
 
   async markArrived(id: string) {
-    await this.ambulanceRepo.update((await this.findOne(id)).ambulanceId, {
-      status: AmbulanceStatus.BUSY,
-      currentSpeed: 0,
-    });
+    const transit = await this.findOne(id);
+    if (transit.ambulanceId) {
+      await this.ambulanceRepo.update(transit.ambulanceId, {
+        status: AmbulanceStatus.BUSY,
+        currentSpeed: 0,
+      });
+    }
     const updated = await super.update(id, {
       status: TransitStatus.ARRIVED,
       arrivedAt: new Date(),

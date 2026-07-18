@@ -28,19 +28,25 @@ export class Transit extends BaseEntity {
   @JoinColumn({ name: 'city_id' })
   city: City;
 
-  @Column({ name: 'ambulance_id' })
-  ambulanceId: string;
+  @Column({ name: 'ambulance_id', nullable: true })
+  ambulanceId: string | null;
 
-  @ManyToOne(() => Ambulance, (ambulance) => ambulance.transits)
+  @ManyToOne(() => Ambulance, (ambulance) => ambulance.transits, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'ambulance_id' })
-  ambulance: Ambulance;
+  ambulance: Ambulance | null;
 
-  @Column({ name: 'hospital_id' })
-  hospitalId: string;
+  @Column({ name: 'hospital_id', nullable: true })
+  hospitalId: string | null;
 
-  @ManyToOne(() => Hospital, (hospital) => hospital.transits)
+  @ManyToOne(() => Hospital, (hospital) => hospital.transits, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'hospital_id' })
-  hospital: Hospital;
+  hospital: Hospital | null;
 
   @Column({ name: 'emergency_type_id' })
   emergencyTypeId: string;

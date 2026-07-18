@@ -6,7 +6,7 @@ import { EmergencyType } from '../emergency-types/emergency-type.entity';
 import { User } from '../users/user.entity';
 import { Transit } from '../transits/transit.entity';
 import { Ambulance } from '../ambulances/ambulance.entity';
-import { AmbulanceStatus } from '../common/enums';
+import { AmbulanceStatus, TransitStatus } from '../common/enums';
 import { CreateHospitalDto, UpdateHospitalDto } from './dto/hospital.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
 
@@ -145,24 +145,31 @@ export class HospitalsService extends BaseCrudService<Hospital> {
   }
 
   /**
-   * Safe delete: unassign hospital users, remove related GPS + transits
-   * (freeing any attached ambulances), clear emergency-type join rows, then delete.
+   * Safe delete: unassign hospital users, remove only ACTIVE cases (+ GPS),
+   * preserve completed/cancelled history by detaching hospital_id, then delete.
    */
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.hospitalRepo.manager.transaction(async (em) => {
       await em.update(User, { hospitalId: id }, { hospitalId: null });
 
-      const related = await em.find(Transit, {
-        where: { hospitalId: id },
+      const active = await em.find(Transit, {
+        where: {
+          hospitalId: id,
+          status: In([
+            TransitStatus.PENDING,
+            TransitStatus.EN_ROUTE,
+            TransitStatus.ARRIVED,
+          ]),
+        },
         select: { id: true, ambulanceId: true },
       });
 
-      if (related.length > 0) {
-        const transitIds = related.map((t) => t.id);
-        const ambulanceIds = [...new Set(related.map((t) => t.ambulanceId).filter(Boolean))];
+      if (active.length > 0) {
+        const transitIds = active.map((t) => t.id);
+        const ambulanceIds = [...new Set(active.map((t) => t.ambulanceId).filter(Boolean))] as string[];
         await em.query(`DELETE FROM gps_locations WHERE transit_id = ANY($1::uuid[])`, [transitIds]);
-        await em.delete(Transit, { hospitalId: id });
+        await em.delete(Transit, { id: In(transitIds) });
         if (ambulanceIds.length) {
           await em.update(
             Ambulance,
@@ -172,6 +179,8 @@ export class HospitalsService extends BaseCrudService<Hospital> {
         }
       }
 
+      // Keep completed/cancelled cases — detach from this hospital
+      await em.update(Transit, { hospitalId: id }, { hospitalId: null });
       await em.query(`DELETE FROM hospital_emergency_types WHERE hospital_id = $1`, [id]);
       await em.delete(Hospital, { id });
     });

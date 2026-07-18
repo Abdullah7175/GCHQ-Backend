@@ -7,7 +7,7 @@ import { BaseCrudService } from '../common/services/base-crud.service';
 import { GpsLocation } from '../gps/gps-location.entity';
 import { Transit } from '../transits/transit.entity';
 import { EventsGateway } from '../events/events.gateway';
-import { AmbulanceStatus } from '../common/enums';
+import { AmbulanceStatus, TransitStatus } from '../common/enums';
 import { TransitsService } from '../transits/transits.service';
 import { GpsCacheService } from '../gps/gps-cache.service';
 
@@ -104,20 +104,33 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     return super.update(id, dto as Partial<Ambulance>);
   }
 
-  /** Delete ambulance and dependent GPS / transit rows first (FK-safe). */
+  /** Delete ambulance without wiping completed case history. */
   async remove(id: string): Promise<void> {
     await this.findOne(id);
     await this.ambulanceRepo.manager.transaction(async (em) => {
-      const transitIds = (
-        await em.find(Transit, { where: { ambulanceId: id }, select: { id: true } })
-      ).map((t) => t.id);
-
-      if (transitIds.length > 0) {
-        await em.delete(GpsLocation, { transitId: In(transitIds) });
-        await em.delete(Transit, { ambulanceId: id });
+      const active = await em.find(Transit, {
+        where: {
+          ambulanceId: id,
+          status: In([
+            TransitStatus.PENDING,
+            TransitStatus.EN_ROUTE,
+            TransitStatus.ARRIVED,
+          ]),
+        },
+        select: { id: true },
+      });
+      const activeIds = active.map((t) => t.id);
+      if (activeIds.length > 0) {
+        await em.delete(GpsLocation, { transitId: In(activeIds) });
+        await em.delete(Transit, { id: In(activeIds) });
       }
 
-      await em.delete(GpsLocation, { ambulanceId: id });
+      // Keep completed/cancelled cases — detach from this unit
+      await em.update(Transit, { ambulanceId: id }, { ambulanceId: null });
+      await em.query(
+        `DELETE FROM gps_locations WHERE ambulance_id = $1 AND transit_id IS NULL`,
+        [id],
+      );
       await em.delete(Ambulance, { id });
     });
   }
