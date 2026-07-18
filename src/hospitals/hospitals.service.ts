@@ -37,6 +37,30 @@ export class HospitalsService extends BaseCrudService<Hospital> {
     return super.findOne(id, this.relations);
   }
 
+  async findMapMarkers(cityId: string) {
+    const hospitals = await this.hospitalRepo.find({
+      where: { cityId },
+      order: { name: 'ASC' },
+    });
+
+    const markers = hospitals.map((hospital) => ({
+      id: hospital.id,
+      name: hospital.name,
+      address: hospital.address,
+      latitude: Number(hospital.latitude),
+      longitude: Number(hospital.longitude),
+      sectorId: hospital.sectorId,
+      icon: 'hospital',
+      color: '#dc2626',
+    }));
+
+    return {
+      cityId,
+      total: markers.length,
+      markers,
+    };
+  }
+
   async findSuitable(
     cityId: string,
     emergencyTypeId: string,

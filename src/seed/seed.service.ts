@@ -21,6 +21,10 @@ import {
   PrepStatus,
   SectorGridStatus,
 } from '../common/enums';
+import {
+  LAHORE_FLEET_RANGES,
+  LAHORE_HOSPITALS,
+} from './lahore-operational.seed';
 
 interface DemoTransitSpec {
   transitId: string;
@@ -61,8 +65,11 @@ export class SeedService implements OnModuleInit {
   async onModuleInit() {
     await this.ensureCityMapCenters();
     const count = await this.userRepo.count();
-    if (count > 0) return;
-    await this.seed();
+    if (count === 0) {
+      await this.seed();
+    }
+    // Idempotent production backfill: safe to run on every API restart.
+    await this.ensureLahoreHospitalsAndFleet();
   }
 
   /** Backfill map viewport for known cities (and leave custom cities to Admin). */
@@ -88,6 +95,116 @@ export class SeedService implements OnModuleInit {
         mapDefaultZoom: city.mapDefaultZoom || d.zoom,
       });
     }
+  }
+
+  /**
+   * Idempotently backfill Lahore's hospital registry and requested fleet.
+   * Existing records are updated in place; sector/category assignments remain
+   * untouched for administrators to manage.
+   */
+  private async ensureLahoreHospitalsAndFleet() {
+    const lahore = await this.cityRepo.findOne({ where: { code: 'LHE' } });
+    if (!lahore) {
+      console.warn('Lahore operational seed skipped: city code LHE does not exist');
+      return;
+    }
+
+    const existingHospitals = await this.hospitalRepo.find({
+      where: { cityId: lahore.id },
+    });
+    const normalizedHospitalName = (value: string) => value.trim().toLowerCase();
+
+    for (const definition of LAHORE_HOSPITALS) {
+      const acceptedNames = new Set(
+        [definition.name, ...(definition.aliases ?? [])].map(normalizedHospitalName),
+      );
+      const existing = existingHospitals.find((hospital) =>
+        acceptedNames.has(normalizedHospitalName(hospital.name)),
+      );
+
+      if (existing) {
+        await this.hospitalRepo.update(existing.id, {
+          name: definition.name,
+          address: definition.address,
+          latitude: definition.latitude,
+          longitude: definition.longitude,
+        });
+      } else {
+        const created = await this.hospitalRepo.save({
+          name: definition.name,
+          cityId: lahore.id,
+          address: definition.address,
+          latitude: definition.latitude,
+          longitude: definition.longitude,
+          sectorId: null,
+          specialties: null,
+        });
+        existingHospitals.push(created);
+      }
+    }
+
+    const providers = await this.providerRepo.find();
+    const providersByCode = new Map(
+      providers.map((provider) => [provider.code.toUpperCase(), provider]),
+    );
+    const existingAmbulances = await this.ambulanceRepo.find({
+      where: { cityId: lahore.id },
+    });
+    const unitsByName = new Map(
+      existingAmbulances.map((ambulance) => [
+        ambulance.unitNumber.trim().toLowerCase(),
+        ambulance,
+      ]),
+    );
+
+    const ambulancesToCreate: Partial<Ambulance>[] = [];
+    for (const range of LAHORE_FLEET_RANGES) {
+      const provider =
+        providersByCode.get(range.providerCode) ??
+        providers.find((item) =>
+          item.name.toLowerCase().includes(range.providerNameToken),
+        );
+      if (!provider) {
+        console.warn(
+          `Lahore fleet seed skipped ${range.prefix}: provider ${range.providerCode} does not exist`,
+        );
+        continue;
+      }
+
+      for (let index = 1; index <= range.count; index += 1) {
+        const unitNumber = `${range.prefix}${index}`;
+        const existing = unitsByName.get(unitNumber.toLowerCase());
+        if (existing) {
+          if (existing.cityId !== lahore.id || existing.providerId !== provider.id) {
+            await this.ambulanceRepo.update(existing.id, {
+              cityId: lahore.id,
+              providerId: provider.id,
+            });
+          }
+          continue;
+        }
+
+        ambulancesToCreate.push({
+          unitNumber,
+          cityId: lahore.id,
+          providerId: provider.id,
+          status: AmbulanceStatus.AVAILABLE,
+          currentLat: null,
+          currentLng: null,
+          currentSpeed: 0,
+          driverId: null,
+        });
+      }
+    }
+
+    if (ambulancesToCreate.length > 0) {
+      await this.ambulanceRepo.save(ambulancesToCreate);
+    }
+
+    console.log(
+      `Lahore operational data ready: ${LAHORE_HOSPITALS.length} hospitals, ` +
+      `${LAHORE_FLEET_RANGES.reduce((sum, range) => sum + range.count, 0)} requested fleet units`,
+    );
   }
 
   async seed() {
