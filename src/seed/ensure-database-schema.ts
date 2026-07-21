@@ -110,6 +110,14 @@ export async function ensureDatabaseSchema(dataSource: DataSource): Promise<void
     ALTER TABLE "transits"
       ADD COLUMN IF NOT EXISTS "estimated_arrival_at" TIMESTAMPTZ NULL
   `);
+  await dataSource.query(`
+    ALTER TABLE "transits"
+      ADD COLUMN IF NOT EXISTS "hospital_choice_consent" varchar(10) NULL
+  `);
+  await dataSource.query(`
+    CREATE INDEX IF NOT EXISTS "IDX_transits_hospital_choice_consent"
+    ON "transits" ("hospital_choice_consent")
+  `);
 
   await dataSource.query(`
     CREATE TABLE IF NOT EXISTS "latency_breach_rules" (

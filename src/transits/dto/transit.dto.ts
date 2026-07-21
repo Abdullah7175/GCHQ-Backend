@@ -1,6 +1,6 @@
 import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PrepStatus, TransitStatus } from '../../common/enums';
+import { HospitalChoiceConsent, PrepStatus, TransitStatus } from '../../common/enums';
 
 export class CreateTransitDto {
   @IsUUID()
@@ -16,6 +16,16 @@ export class CreateTransitDto {
 
   @IsUUID()
   triageCodeId: string;
+
+  /**
+   * Required. Who chose the hospital:
+   * - `pc` = Patient Choice (PC)
+   * - `ac` = Ambulance Choice (AC)
+   */
+  @IsEnum(HospitalChoiceConsent, {
+    message: 'hospitalChoiceConsent must be "pc" (Patient Choice) or "ac" (Ambulance Choice)',
+  })
+  hospitalChoiceConsent: HospitalChoiceConsent;
 
   @IsOptional()
   @IsUUID()

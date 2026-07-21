@@ -38,6 +38,14 @@ export enum PrepStatus {
   READY = 'ready',
 }
 
+/** Who chose the destination hospital for this corridor (driver must pick before create). */
+export enum HospitalChoiceConsent {
+  /** PC — Patient Choice */
+  PATIENT_CHOICE = 'pc',
+  /** AC — Ambulance Choice */
+  AMBULANCE_CHOICE = 'ac',
+}
+
 export enum SectorGridStatus {
   FLOWING = 'flowing',
   MODERATE = 'moderate',

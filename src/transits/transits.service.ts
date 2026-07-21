@@ -297,6 +297,7 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentLng: dto.originLng,
       etaMinutes: baseline,
       baselineEtaMinutes: baseline,
+      hospitalChoiceConsent: dto.hospitalChoiceConsent,
       claimedById: null,
       claimedAt: null,
     } as Partial<Transit>);

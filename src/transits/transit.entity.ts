@@ -6,7 +6,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { BaseEntity } from '../common/entities/base.entity';
-import { PrepStatus, TransitStatus } from '../common/enums';
+import { PrepStatus, TransitStatus, HospitalChoiceConsent } from '../common/enums';
 import { City } from '../cities/city.entity';
 import { Ambulance } from '../ambulances/ambulance.entity';
 import { Hospital } from '../hospitals/hospital.entity';
@@ -116,6 +116,18 @@ export class Transit extends BaseEntity {
 
   @Column({ name: 'baseline_eta_minutes', type: 'decimal', precision: 6, scale: 2, nullable: true })
   baselineEtaMinutes: number | null;
+
+  /**
+   * Hospital destination consent recorded by the driver before creating the corridor.
+   * `pc` = Patient Choice, `ac` = Ambulance Choice. Admin Cases list only.
+   */
+  @Column({
+    name: 'hospital_choice_consent',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
+  hospitalChoiceConsent: HospitalChoiceConsent | null;
 
   /** Promised hospital arrival time — fixed at corridor start for ETA breach evaluation */
   @Column({ name: 'estimated_arrival_at', type: 'timestamptz', nullable: true })
