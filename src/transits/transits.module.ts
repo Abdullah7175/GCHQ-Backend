@@ -10,6 +10,7 @@ import { EventsModule } from '../events/events.module';
 import { LatencyModule } from '../latency/latency.module';
 
 import { GeofencesModule } from '../geofences/geofences.module';
+import { EtaModule } from '../eta/eta.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { GeofencesModule } from '../geofences/geofences.module';
     forwardRef(() => EventsModule),
     LatencyModule,
     GeofencesModule,
+    EtaModule,
   ],
   providers: [TransitsService],
   controllers: [TransitsController],

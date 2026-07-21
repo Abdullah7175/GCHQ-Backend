@@ -23,6 +23,7 @@ import { AuditInterceptor } from './audit/audit.interceptor';
 import { LatencyModule } from './latency/latency.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { GeofencesModule } from './geofences/geofences.module';
+import { EtaModule } from './eta/eta.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { GeofencesModule } from './geofences/geofences.module';
     LatencyModule,
     MessagingModule,
     GeofencesModule,
+    EtaModule,
     SeedModule,
   ],
   providers: [

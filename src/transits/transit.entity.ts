@@ -117,9 +117,21 @@ export class Transit extends BaseEntity {
   @Column({ name: 'baseline_eta_minutes', type: 'decimal', precision: 6, scale: 2, nullable: true })
   baselineEtaMinutes: number | null;
 
-  /** Promised hospital arrival time from route ETA at corridor start / last ETA update */
+  /** Promised hospital arrival time — fixed at corridor start for ETA breach evaluation */
   @Column({ name: 'estimated_arrival_at', type: 'timestamptz', nullable: true })
   estimatedArrivalAt: Date | null;
+
+  /** OSRM/Valhalla route as GeoJSON [lng, lat] coordinates */
+  @Column({ name: 'route_geometry', type: 'jsonb', nullable: true })
+  routeGeometry: [number, number][] | null;
+
+  /** OSRM static route distance (meters) at last route plan */
+  @Column({ name: 'route_distance_meters', type: 'int', nullable: true })
+  routeDistanceMeters: number | null;
+
+  /** OSRM static duration (seconds) before historical correction — used for calibration */
+  @Column({ name: 'static_duration_seconds', type: 'int', nullable: true })
+  staticDurationSeconds: number | null;
 
   /** CSR who claimed this green-corridor intimation */
   @Column({ name: 'claimed_by_id', nullable: true })

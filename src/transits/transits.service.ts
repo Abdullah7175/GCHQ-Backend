@@ -15,6 +15,9 @@ import { LatencyService } from '../latency/latency.service';
 import { HospitalGeofencesService } from '../geofences/hospital-geofences.service';
 import { DEFAULT_CITY_CONFIG } from '../cities/city-operational-config';
 import { isInsideGeofence, haversineMeters as geoHaversine } from '../geofences/geofence.util';
+import { RouteEtaService } from '../eta/route-eta.service';
+import { OsrmRoutingService } from '../eta/osrm-routing.service';
+import { EtaCalibrationService } from '../eta/eta-calibration.service';
 
 @Injectable()
 export class TransitsService extends BaseCrudService<Transit> {
@@ -26,6 +29,9 @@ export class TransitsService extends BaseCrudService<Transit> {
     private readonly events: EventsGateway,
     private readonly latencyService: LatencyService,
     private readonly geofencesService: HospitalGeofencesService,
+    private readonly routeEta: RouteEtaService,
+    private readonly osrm: OsrmRoutingService,
+    private readonly etaCalibration: EtaCalibrationService,
   ) {
     super(transitRepo);
   }
@@ -338,14 +344,44 @@ export class TransitsService extends BaseCrudService<Transit> {
       throw new BadRequestException('Transit has no ambulance assigned');
     }
 
+    const startLat = lat ?? Number(transit.originLat);
+    const startLng = lng ?? Number(transit.originLng);
+    const hospitalLat = transit.hospital?.latitude != null ? Number(transit.hospital.latitude) : null;
+    const hospitalLng = transit.hospital?.longitude != null ? Number(transit.hospital.longitude) : null;
+
     await this.ambulanceRepo.update(transit.ambulanceId, {
       status: AmbulanceStatus.EN_ROUTE,
-      currentLat: lat ?? transit.originLat,
-      currentLng: lng ?? transit.originLng,
+      currentLat: Number.isFinite(startLat) ? startLat : transit.originLat,
+      currentLng: Number.isFinite(startLng) ? startLng : transit.originLng,
     });
 
     const startedAt = new Date();
-    const etaMinutes = transit.etaMinutes ?? transit.baselineEtaMinutes;
+    let etaMinutes = transit.etaMinutes ?? transit.baselineEtaMinutes;
+    let routeGeometry: [number, number][] | null = null;
+    let routeDistanceMeters: number | null = null;
+    let staticDurationSeconds: number | null = null;
+
+    // Plan route via OSRM and set promised ETA (fixed for breach) from static duration × city/hour factor.
+    if (
+      Number.isFinite(startLat) &&
+      Number.isFinite(startLng) &&
+      hospitalLat != null &&
+      hospitalLng != null &&
+      Number.isFinite(hospitalLat) &&
+      Number.isFinite(hospitalLng)
+    ) {
+      const route = await this.osrm.getDrivingRoute(startLat, startLng, hospitalLat, hospitalLng);
+      if (route) {
+        routeGeometry = route.coordinatesLngLat;
+        routeDistanceMeters = route.distanceMeters;
+        staticDurationSeconds = route.durationSeconds;
+        const hour = startedAt.getHours();
+        const factor = await this.etaCalibration.getCorrectionFactor(transit.cityId, hour);
+        etaMinutes = this.routeEta.computeInitialPromisedMinutes(route.durationSeconds, factor);
+        this.routeEta.registerRoute(transit.id, route.coordinatesLngLat);
+      }
+    }
+
     const estimatedArrivalAt = this.latencyService.computeEstimatedArrival(
       startedAt,
       etaMinutes != null ? Number(etaMinutes) : null,
@@ -355,8 +391,13 @@ export class TransitsService extends BaseCrudService<Transit> {
       status: TransitStatus.EN_ROUTE,
       startedAt,
       estimatedArrivalAt,
-      currentLat: lat ?? transit.originLat,
-      currentLng: lng ?? transit.originLng,
+      etaMinutes: etaMinutes != null ? Number(etaMinutes) : null,
+      baselineEtaMinutes: etaMinutes != null ? Number(etaMinutes) : transit.baselineEtaMinutes,
+      currentLat: Number.isFinite(startLat) ? startLat : transit.originLat,
+      currentLng: Number.isFinite(startLng) ? startLng : transit.originLng,
+      routeGeometry,
+      routeDistanceMeters,
+      staticDurationSeconds,
     });
 
     const full = await this.findOne(updated.id);
@@ -449,6 +490,7 @@ export class TransitsService extends BaseCrudService<Transit> {
 
     // Row stays in `transits` with status=completed — never deleted on complete
     const full = await this.findOne(updated.id);
+    this.routeEta.clearRoute(full.id);
     await this.latencyService.evaluateTransitArrival(full);
     this.events.broadcastTransitUpdate(full);
     this.events.broadcastDashboardRefresh(full.cityId);
@@ -470,6 +512,7 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentSpeed: 0,
     });
     const full = await this.findOne(updated.id);
+    this.routeEta.clearRoute(full.id);
     await this.latencyService.evaluateTransitArrival(full);
     this.events.broadcastTransitUpdate(full);
     return full;
@@ -483,10 +526,9 @@ export class TransitsService extends BaseCrudService<Transit> {
   }
 
   /**
-   * Called when tracker/demo GPS updates. Updates transit position and
-   * auto-completes when ambulance enters hospital geofence.
-   * Does NOT overwrite etaMinutes — mobile owns ETA via PATCH /transits/:id/eta
-   * (or optional etaMinutes on the GPS payload).
+   * Called on each GPS ping. Updates position and live etaMinutes from route
+   * geometry + rolling speed. Does NOT change estimatedArrivalAt (promised ETA
+   * for breach stays fixed from corridor start).
    */
   async applyGpsUpdate(
     ambulanceId: string,
@@ -515,17 +557,55 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentLng: lng,
       currentSpeed: speed,
     };
-    if (etaMinutes != null && Number.isFinite(Number(etaMinutes))) {
+
+    // Prefer server-side live ETA from stored route; fall back to client-supplied minutes.
+    if (active.status === TransitStatus.EN_ROUTE) {
+      this.routeEta.ensureRouteCached(active.id, active.routeGeometry);
+      let live = await this.routeEta.onGpsPing({
+        transitId: active.id,
+        lat,
+        lng,
+        timestamp: Date.now(),
+      });
+
+      // Off-route: re-plan from current position (keeps promised estimatedArrivalAt).
+      if (live?.needsReroute && active.hospital?.latitude != null && active.hospital?.longitude != null) {
+        const route = await this.osrm.getDrivingRoute(
+          lat,
+          lng,
+          Number(active.hospital.latitude),
+          Number(active.hospital.longitude),
+        );
+        if (route) {
+          patch.routeGeometry = route.coordinatesLngLat;
+          patch.routeDistanceMeters = route.distanceMeters;
+          // Keep original staticDurationSeconds for calibration against first plan.
+          this.routeEta.registerRoute(active.id, route.coordinatesLngLat);
+          live = await this.routeEta.onGpsPing({
+            transitId: active.id,
+            lat,
+            lng,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      if (live) {
+        patch.etaMinutes = live.etaMinutes;
+      } else if (etaMinutes != null && Number.isFinite(Number(etaMinutes))) {
+        patch.etaMinutes = Number(etaMinutes);
+      }
+    } else if (etaMinutes != null && Number.isFinite(Number(etaMinutes))) {
       patch.etaMinutes = Number(etaMinutes);
-      patch.estimatedArrivalAt = this.latencyService.computeEstimatedArrivalFromRemaining(
-        Number(etaMinutes),
-      );
     }
 
     await this.transitRepo.update(active.id, patch as never);
 
     const autoCompleted = await this.tryGeofenceAutoComplete(active, lat, lng);
-    if (autoCompleted) return autoCompleted;
+    if (autoCompleted) {
+      this.routeEta.clearRoute(active.id);
+      return autoCompleted;
+    }
 
     const full = await this.findOne(active.id);
     this.events.broadcastGpsUpdate({
@@ -536,12 +616,16 @@ export class TransitsService extends BaseCrudService<Transit> {
       longitude: lng,
       speed,
       remainingMeters: remaining,
+      etaMinutes: full.etaMinutes,
     });
     this.events.broadcastTransitUpdate(full);
     return full;
   }
 
-  /** Persist mobile-reported ETA (overwrites previous etaMinutes). */
+  /**
+   * Mobile-reported live ETA. Updates display etaMinutes only —
+   * estimatedArrivalAt (promised) stays fixed for breach evaluation.
+   */
   async updateEta(
     id: string,
     dto: { etaMinutes: number; currentLat?: number; currentLng?: number; currentSpeed?: number },
@@ -564,7 +648,6 @@ export class TransitsService extends BaseCrudService<Transit> {
 
     const patch: Partial<Transit> = {
       etaMinutes: eta,
-      estimatedArrivalAt: this.latencyService.computeEstimatedArrivalFromRemaining(eta),
     };
     if (dto.currentLat != null && Number.isFinite(Number(dto.currentLat))) {
       patch.currentLat = Number(dto.currentLat);
