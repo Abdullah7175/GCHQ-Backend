@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ProviderShape } from '../../common/enums';
 
 export class CreateProviderDto {
@@ -13,6 +13,12 @@ export class CreateProviderDto {
 
   @IsString()
   color: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  @Matches(/^[A-Za-z0-9]+$/)
+  markerLetter?: string;
 
   @IsOptional()
   @IsString()
@@ -35,6 +41,12 @@ export class UpdateProviderDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  @Matches(/^[A-Za-z0-9]+$/)
+  markerLetter?: string;
 
   @IsOptional()
   @IsString()

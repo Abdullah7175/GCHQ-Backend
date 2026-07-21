@@ -33,8 +33,16 @@ export class DashboardController {
   @Get('safe-city')
   @RequirePermissions(Permission.VIEW_DASHBOARD_SAFE_CITY)
   async getSafeCity(@Req() req: { user: JwtPayload }, @Query('cityId') cityId?: string) {
-    const user = await this.usersService.findOne(req.user.sub);
-    return this.service.getSafeCityDashboard(requireCityId(req.user, cityId), user.permittedProviderIds ?? undefined);
+    const user = await this.usersService.findOne(req.user.sub, { sector: true } as never);
+    return this.service.getSafeCityDashboard(requireCityId(req.user, cityId), {
+      permittedProviderIds: user.permittedProviderIds ?? undefined,
+      sectorIds:
+        user.permittedSectorIds && user.permittedSectorIds.length > 0
+          ? user.permittedSectorIds
+          : user.sectorId
+            ? [user.sectorId]
+            : undefined,
+    });
   }
 
   @Get('hq')
@@ -42,8 +50,13 @@ export class DashboardController {
   async getHq(@Req() req: { user: JwtPayload }, @Query('cityId') cityId?: string) {
     const user = await this.usersService.findOne(req.user.sub);
     return this.service.getHqDashboard(requireCityId(req.user, cityId), {
-      sectorId: req.user.sectorId,
-      isCityOverseer: req.user.isCityOverseer || req.user.role === 'admin',
+      sectorIds:
+        user.permittedSectorIds && user.permittedSectorIds.length > 0
+          ? user.permittedSectorIds
+          : user.sectorId
+            ? [user.sectorId]
+            : undefined,
+      isCityOverseer: user.isCityOverseer || req.user.role === 'admin',
       permittedProviderIds: user.permittedProviderIds ?? undefined,
     });
   }

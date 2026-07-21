@@ -1,4 +1,4 @@
-import { Entity, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, OneToMany, ManyToOne, ManyToMany, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../common/entities/base.entity';
 import { UserRole } from '../common/enums';
 import { City } from '../cities/city.entity';
@@ -57,9 +57,17 @@ export class User extends BaseEntity {
   @OneToMany(() => Ambulance, (ambulance) => ambulance.driver)
   ambulances: Ambulance[];
 
+  /** Shift assignments. A paramedic may belong to only one ambulance (service-enforced). */
+  @ManyToMany(() => Ambulance, (ambulance) => ambulance.assignedDrivers)
+  assignedAmbulances: Ambulance[];
+
   /** For HQ/SafeCity: if populated, user can only see these providers' fleets/transits */
   @Column('simple-array', { name: 'permitted_provider_ids', nullable: true })
   permittedProviderIds: string[] | null;
+
+  /** Safe City sector scope; multiple sectors support head users. */
+  @Column('simple-array', { name: 'permitted_sector_ids', nullable: true })
+  permittedSectorIds: string[] | null;
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;

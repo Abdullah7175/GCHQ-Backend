@@ -7,11 +7,16 @@ import { Ambulance } from '../ambulances/ambulance.entity';
 import { Hospital } from '../hospitals/hospital.entity';
 import { City } from '../cities/city.entity';
 import { EventsModule } from '../events/events.module';
+import { LatencyModule } from '../latency/latency.module';
+
+import { GeofencesModule } from '../geofences/geofences.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Transit, Ambulance, Hospital, City]),
     forwardRef(() => EventsModule),
+    LatencyModule,
+    GeofencesModule,
   ],
   providers: [TransitsService],
   controllers: [TransitsController],

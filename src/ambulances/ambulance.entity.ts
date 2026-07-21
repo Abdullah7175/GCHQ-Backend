@@ -1,4 +1,12 @@
-import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  ManyToMany,
+  OneToMany,
+  JoinColumn,
+  JoinTable,
+} from 'typeorm';
 import { BaseEntity } from '../common/entities/base.entity';
 import { AmbulanceStatus } from '../common/enums';
 import { City } from '../cities/city.entity';
@@ -55,6 +63,14 @@ export class Ambulance extends BaseEntity {
   @JoinColumn({ name: 'driver_id' })
   driver: User | null;
 
+  /** Up to three shift drivers may be assigned; driverId is the currently active driver. */
+  @ManyToMany(() => User, (user) => user.assignedAmbulances)
+  @JoinTable({
+    name: 'ambulance_drivers',
+    joinColumn: { name: 'ambulance_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
+  })
+  assignedDrivers: User[];
 
   @OneToMany(() => Transit, (transit) => transit.ambulance)
   transits: Transit[];

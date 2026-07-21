@@ -7,6 +7,7 @@ import { Sector } from '../sectors/sector.entity';
 import { City } from '../cities/city.entity';
 import { TransitStatus } from '../common/enums';
 import { DEFAULT_CITY_CONFIG } from '../cities/city-operational-config';
+import { LatencyService } from '../latency/latency.service';
 
 @Injectable()
 export class DashboardService {
@@ -15,6 +16,7 @@ export class DashboardService {
     @InjectRepository(Ambulance) private readonly ambulanceRepo: Repository<Ambulance>,
     @InjectRepository(Sector) private readonly sectorRepo: Repository<Sector>,
     @InjectRepository(City) private readonly cityRepo: Repository<City>,
+    private readonly latencyService: LatencyService,
   ) {}
 
   private todayRange() {
@@ -96,14 +98,20 @@ export class DashboardService {
     };
   }
 
-  async getSafeCityDashboard(cityId: string, permittedProviderIds?: string[]) {
+  async getSafeCityDashboard(
+    cityId: string,
+    options?: { permittedProviderIds?: string[]; sectorIds?: string[] },
+  ) {
     const config = await this.getCityConfig(cityId);
     const activeTransits = await this.transitRepo.find({
       where: {
         cityId,
         status: In([TransitStatus.EN_ROUTE]),
-        ...(permittedProviderIds && permittedProviderIds.length > 0 ? {
-          ambulance: { providerId: In(permittedProviderIds) }
+        ...(options?.sectorIds && options.sectorIds.length > 0 ? {
+          sectorId: In(options.sectorIds)
+        } : {}),
+        ...(options?.permittedProviderIds && options.permittedProviderIds.length > 0 ? {
+          ambulance: { providerId: In(options.permittedProviderIds) }
         } : {}),
       },
       relations: {
@@ -120,8 +128,8 @@ export class DashboardService {
     const ambulances = await this.ambulanceRepo.find({
       where: {
         cityId,
-        ...(permittedProviderIds && permittedProviderIds.length > 0 ? {
-          providerId: In(permittedProviderIds)
+        ...(options?.permittedProviderIds && options.permittedProviderIds.length > 0 ? {
+          providerId: In(options.permittedProviderIds)
         } : {}),
       },
       relations: { provider: true } as never,
@@ -157,6 +165,7 @@ export class DashboardService {
 
     return {
       cityId,
+      sectorIds: options?.sectorIds ?? [],
       config,
       activeCorridors,
       sectors,
@@ -170,7 +179,10 @@ export class DashboardService {
     };
   }
 
-  async getHqDashboard(cityId: string, options?: { sectorId?: string | null; isCityOverseer?: boolean; permittedProviderIds?: string[] }) {
+  async getHqDashboard(
+    cityId: string,
+    options?: { sectorIds?: string[]; isCityOverseer?: boolean; permittedProviderIds?: string[] },
+  ) {
     const activeTransits = await this.transitRepo.find({
       where: {
         cityId,
@@ -190,10 +202,11 @@ export class DashboardService {
       order: { createdAt: 'DESC' },
     });
 
-    const isOverseer = options?.isCityOverseer === true || !options?.sectorId;
+    const sectorIds = options?.sectorIds?.filter(Boolean) ?? [];
+    const isOverseer = options?.isCityOverseer === true || sectorIds.length === 0;
     const scoped = isOverseer
       ? activeTransits
-      : activeTransits.filter((t) => !t.sectorId || t.sectorId === options!.sectorId);
+      : activeTransits.filter((t) => !t.sectorId || sectorIds.includes(t.sectorId));
 
     const unclaimed = scoped.filter(
       (t) => t.status === TransitStatus.EN_ROUTE && !t.claimedById,
@@ -214,7 +227,7 @@ export class DashboardService {
 
     return {
       cityId,
-      sectorId: options?.sectorId ?? null,
+      sectorIds,
       isCityOverseer: isOverseer,
       activeEmergencies: scoped.length,
       activeTransits: scoped,
@@ -367,8 +380,8 @@ export class DashboardService {
           avgTimeSaved = Math.round(totalSaved / savedSamples.length);
         }
 
-        const threshold = config.latencySpeedThresholdKmh;
-        const latencyBreaches = activeTransits.filter((t) => Number(t.currentSpeed) < threshold);
+        const latencyBreachesToday = await this.latencyService.countBreachesForCityToday(city.id);
+        const latencyBreachLog = await this.latencyService.listRecentBreachesForCity(city.id, 25);
 
         return {
           city: { id: city.id, name: city.name, code: city.code, config },
@@ -389,14 +402,40 @@ export class DashboardService {
             avgTimeSavedMinutes: avgTimeSaved,
             transitRate,
             corridorsClearedToday: completedToday.length,
-            latencyBreaches: latencyBreaches.length,
+            latencyBreaches: latencyBreachesToday,
             maxConcurrent: config.maxConcurrentTransits,
           },
           providerTrips,
           hospitalLoad,
           hospitalEmergencies,
           sectorEmergencies,
-          latencyBreaches,
+          latencyBreachLog: latencyBreachLog.map((b) => {
+            const meta = (b.metadata ?? {}) as {
+              transitId?: string;
+              userName?: string;
+              userEmail?: string;
+              userRole?: string;
+            };
+            let summary = String(b.referenceType);
+            if (meta.transitId) {
+              summary = String(meta.transitId);
+            } else if (meta.userName || meta.userEmail) {
+              const name = meta.userName || meta.userEmail || '';
+              const role = meta.userRole ? ` (${String(meta.userRole).replace(/_/g, ' ')})` : '';
+              summary = `${name}${role}`;
+            }
+            return {
+              id: b.id,
+              breachType: b.breachType,
+              delayMinutes: Number(b.delayMinutes),
+              thresholdMinutes: b.thresholdMinutes,
+              detectedAt: b.detectedAt,
+              sector: b.sector?.name ?? null,
+              referenceType: b.referenceType,
+              userName: meta.userName ?? null,
+              summary,
+            };
+          }),
         };
       }),
     );
@@ -422,6 +461,9 @@ export class DashboardService {
       hospitalLoad: citySummaries.flatMap((s) => s.hospitalLoad),
       hospitalEmergencies: citySummaries.flatMap((s) => s.hospitalEmergencies),
       sectorEmergencies: citySummaries.flatMap((s) => s.sectorEmergencies),
+      latencyBreachLog: citySummaries.flatMap((s) =>
+        (s.latencyBreachLog ?? []).map((b) => ({ ...b, cityName: s.city.name })),
+      ),
     };
   }
 }

@@ -12,6 +12,7 @@ import { LoginDto } from '../users/dto/user.dto';
 import { Public } from './public.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtPayload } from './jwt.strategy';
+import { LogoutDto } from './dto/logout.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -29,7 +30,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(200)
-  logout(@Req() req: { user: JwtPayload }) {
+  logout(@Req() req: { user: JwtPayload }, @Body() _dto: LogoutDto) {
     return this.usersService.logout(req.user.sub);
   }
 

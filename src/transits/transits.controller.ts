@@ -54,8 +54,8 @@ export class TransitsController {
 
   @Post()
   @RequirePermissions(Permission.CREATE_TRANSIT)
-  create(@Body() dto: CreateTransitDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateTransitDto, @Req() req: { user: JwtPayload }) {
+    return this.service.create(dto, req.user);
   }
 
   @Patch(':id/claim')
@@ -81,27 +81,35 @@ export class TransitsController {
 
   @Patch(':id/start')
   @RequirePermissions(Permission.START_TRANSIT)
-  start(@Param('id') id: string, @Body() body: { currentLat?: number; currentLng?: number }) {
-    return this.service.start(id, body.currentLat, body.currentLng);
+  start(
+    @Param('id') id: string,
+    @Body() body: { currentLat?: number; currentLng?: number },
+    @Req() req: { user: JwtPayload },
+  ) {
+    return this.service.start(id, body.currentLat, body.currentLng, req.user);
   }
 
   @Patch(':id/complete')
   @RequirePermissions(Permission.COMPLETE_TRANSIT)
-  complete(@Param('id') id: string) {
-    return this.service.complete(id);
+  complete(@Param('id') id: string, @Req() req: { user: JwtPayload }) {
+    return this.service.complete(id, req.user);
   }
 
   @Patch(':id/arrived')
   @RequirePermissions(Permission.ARRIVE_TRANSIT)
-  arrived(@Param('id') id: string) {
-    return this.service.markArrived(id);
+  arrived(@Param('id') id: string, @Req() req: { user: JwtPayload }) {
+    return this.service.markArrived(id, req.user);
   }
 
   /** Driver app: overwrite live ETA (OSRM / blended). Same UUID as create/start. */
   @Patch(':id/eta')
   @RequirePermissions(Permission.UPDATE_ETA_TRANSIT)
-  updateEta(@Param('id') id: string, @Body() dto: UpdateTransitEtaDto) {
-    return this.service.updateEta(id, dto);
+  updateEta(
+    @Param('id') id: string,
+    @Body() dto: UpdateTransitEtaDto,
+    @Req() req: { user: JwtPayload },
+  ) {
+    return this.service.updateEta(id, dto, req.user);
   }
 
   @Patch(':id/prep-ready')

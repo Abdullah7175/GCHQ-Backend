@@ -12,6 +12,10 @@ export interface CityOperationalConfig {
   privacyRedactPatientData: boolean;
   /** Higher = shown first on multi-city VVIP overview */
   commandPriority: number;
+  /** When enabled, EN_ROUTE transits auto-complete after delay inside hospital geofence */
+  geofenceAutoCompleteEnabled: boolean;
+  /** Seconds ambulance must stay inside geofence before auto-complete */
+  geofenceAutoCompleteDelaySeconds: number;
 }
 
 export const DEFAULT_CITY_CONFIG: CityOperationalConfig = {
@@ -23,4 +27,6 @@ export const DEFAULT_CITY_CONFIG: CityOperationalConfig = {
   enableTransitRateKpi: true,
   privacyRedactPatientData: true,
   commandPriority: 1,
+  geofenceAutoCompleteEnabled: false,
+  geofenceAutoCompleteDelaySeconds: 10,
 };

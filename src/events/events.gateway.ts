@@ -9,6 +9,9 @@ import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '../users/user.entity';
 
 const GLOBAL_ROOM = 'global';
 const REFRESH_DEBOUNCE_MS = 5_000;
@@ -18,6 +21,7 @@ interface SocketUser {
   role: string;
   cityId?: string;
   hospitalId?: string;
+  tokenVersion?: number;
 }
 
 @WebSocketGateway({
@@ -43,6 +47,7 @@ export class EventsGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
   afterInit() {
@@ -65,7 +70,21 @@ export class EventsGateway
         issuer: 'gchq-api',
         audience: 'gchq-clients',
       });
+      const user = await this.userRepo.findOne({
+        where: { id: payload.sub },
+        select: { id: true, isActive: true, tokenVersion: true },
+      });
+      if (
+        !user ||
+        !user.isActive ||
+        (user.tokenVersion ?? 0) !== (payload.tokenVersion ?? 0)
+      ) {
+        client.emit('auth:revoked', { reason: 'Session is no longer active' });
+        client.disconnect(true);
+        return;
+      }
       client.data.user = payload;
+      await client.join(`user:${payload.sub}`);
 
       // City-scoped users only receive their own city's traffic;
       // admins / users without a city see everything via the global room.
@@ -110,6 +129,14 @@ export class EventsGateway
   broadcastGpsUpdate(data: unknown) {
     const cityId = (data as { cityId?: string } | null)?.cityId;
     this.emitScoped('gps:update', data, cityId);
+  }
+
+  /** Immediately terminate an older web/mobile session after shift takeover. */
+  forceLogoutUser(userId: string, reason = 'Another driver started this ambulance shift') {
+    if (!this.server) return;
+    const room = `user:${userId}`;
+    this.server.to(room).emit('auth:revoked', { reason });
+    this.server.in(room).disconnectSockets(true);
   }
 
   /**

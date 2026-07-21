@@ -18,6 +18,10 @@ export class Provider extends BaseEntity {
   @Column({ default: '#d93343' })
   color: string;
 
+  /** Single letter (or short code) shown inside the map marker icon */
+  @Column({ name: 'marker_letter', length: 3, default: '?' })
+  markerLetter: string;
+
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 

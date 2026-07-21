@@ -34,7 +34,7 @@ export class UsersController {
   @Get(':id')
   @RequirePermissions(Permission.MANAGE_SYSTEM)
   findOne(@Param('id') id: string) {
-    return this.service.findOne(id, { hospital: true, provider: true, city: true } as never);
+    return this.service.findOne(id, { hospital: true, provider: true, city: true, sector: true } as never);
   }
 
   @Post()

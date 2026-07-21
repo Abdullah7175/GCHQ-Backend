@@ -22,11 +22,16 @@ import { RequirePermissions } from '../auth/permissions.decorator';
 import { Permission } from '../auth/permissions.enum';
 import { JwtPayload } from '../auth/jwt.strategy';
 import { requireCityId, resolveCityId } from '../common/utils/city-scope';
+import { HospitalGeofencesService } from '../geofences/hospital-geofences.service';
+import { UpsertHospitalGeofenceDto } from '../geofences/dto/geofence.dto';
 
 @Controller('hospitals')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HospitalsController {
-  constructor(private readonly service: HospitalsService) {}
+  constructor(
+    private readonly service: HospitalsService,
+    private readonly geofencesService: HospitalGeofencesService,
+  ) {}
 
   @Get()
   findAll(
@@ -66,6 +71,24 @@ export class HospitalsController {
       query.latitude,
       query.longitude,
     );
+  }
+
+  @Get(':id/geofence')
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
+  getGeofence(@Param('id') id: string) {
+    return this.geofencesService.findByHospitalId(id);
+  }
+
+  @Put(':id/geofence')
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
+  upsertGeofence(@Param('id') id: string, @Body() dto: UpsertHospitalGeofenceDto) {
+    return this.geofencesService.upsert(id, dto);
+  }
+
+  @Delete(':id/geofence')
+  @RequirePermissions(Permission.MANAGE_SYSTEM)
+  removeGeofence(@Param('id') id: string) {
+    return this.geofencesService.remove(id);
   }
 
   @Get(':id')

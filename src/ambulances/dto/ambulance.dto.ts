@@ -1,4 +1,13 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { AmbulanceStatus } from '../../common/enums';
 
@@ -29,6 +38,13 @@ export class CreateAmbulanceDto {
   @IsOptional()
   @IsUUID()
   driverId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(3)
+  @IsUUID('all', { each: true })
+  driverIds?: string[];
 
   @IsOptional()
   @IsString()
@@ -74,6 +90,13 @@ export class UpdateAmbulanceDto {
   @IsOptional()
   @IsUUID()
   driverId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(3)
+  @IsUUID('all', { each: true })
+  driverIds?: string[];
 
   @IsOptional()
   @IsString()

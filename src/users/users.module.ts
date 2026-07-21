@@ -7,11 +7,17 @@ import { Ambulance } from '../ambulances/ambulance.entity';
 import { Transit } from '../transits/transit.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { EventsModule } from '../events/events.module';
+import { AuditModule } from '../audit/audit.module';
+import { LatencyModule } from '../latency/latency.module';
 
 @Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Ambulance, Transit]),
+    EventsModule,
+    AuditModule,
+    LatencyModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

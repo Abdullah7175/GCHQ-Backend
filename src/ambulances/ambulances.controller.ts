@@ -52,8 +52,12 @@ export class AmbulancesController {
    */
   @Patch(':id/gps')
   @RequirePermissions(Permission.UPDATE_GPS)
-  updateGps(@Param('id') id: string, @Body() dto: UpdateGpsDto) {
-    return this.service.updateGps(id, dto, dto.transitId);
+  updateGps(
+    @Param('id') id: string,
+    @Body() dto: UpdateGpsDto,
+    @Req() req: { user: JwtPayload },
+  ) {
+    return this.service.updateGps(id, dto, dto.transitId, req.user.sub);
   }
 
   @Delete(':id')

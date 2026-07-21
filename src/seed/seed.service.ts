@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { ensureDatabaseSchema } from './ensure-database-schema';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { City } from '../cities/city.entity';
@@ -51,6 +52,7 @@ interface DemoTransitSpec {
 @Injectable()
 export class SeedService implements OnModuleInit {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(City) private readonly cityRepo: Repository<City>,
     @InjectRepository(Provider) private readonly providerRepo: Repository<Provider>,
     @InjectRepository(Sector) private readonly sectorRepo: Repository<Sector>,
@@ -63,6 +65,7 @@ export class SeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    await ensureDatabaseSchema(this.dataSource);
     await this.ensureCityMapCenters();
     const count = await this.userRepo.count();
     if (count === 0) {
@@ -229,10 +232,10 @@ export class SeedService implements OnModuleInit {
     });
 
     const providers = await this.providerRepo.save([
-      { name: 'Rescue 1122', code: '1122', shape: ProviderShape.CIRCLE, color: '#d93343' },
-      { name: 'Edhi Network', code: 'EDHI', shape: ProviderShape.TRIANGLE, color: '#f59e0b' },
-      { name: 'Chhipa Organization', code: 'CHIPPA', shape: ProviderShape.SQUARE, color: '#2563eb' },
-      { name: 'Al-Khidmat Foundation', code: 'ALKHIDMAT', shape: ProviderShape.DIAMOND, color: '#16a34a' },
+      { name: 'Rescue 1122', code: '1122', shape: ProviderShape.CIRCLE, color: '#d93343', markerLetter: 'R' },
+      { name: 'Edhi Network', code: 'EDHI', shape: ProviderShape.TRIANGLE, color: '#f59e0b', markerLetter: 'E' },
+      { name: 'Chhipa Organization', code: 'CHIPPA', shape: ProviderShape.SQUARE, color: '#2563eb', markerLetter: 'C' },
+      { name: 'Al-Khidmat Foundation', code: 'ALKHIDMAT', shape: ProviderShape.DIAMOND, color: '#16a34a', markerLetter: 'A' },
     ]);
 
     const sectors = await this.sectorRepo.save([

@@ -7,10 +7,11 @@ import { GpsLocation } from '../gps/gps-location.entity';
 import { EventsModule } from '../events/events.module';
 import { TransitsModule } from '../transits/transits.module';
 import { GpsModule } from '../gps/gps.module';
+import { User } from '../users/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Ambulance, GpsLocation]),
+    TypeOrmModule.forFeature([Ambulance, GpsLocation, User]),
     forwardRef(() => EventsModule),
     forwardRef(() => TransitsModule),
     forwardRef(() => GpsModule),

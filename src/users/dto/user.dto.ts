@@ -56,6 +56,11 @@ export class CreateUserDto {
   permittedProviderIds?: string[];
 
   @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  permittedSectorIds?: string[];
+
+  @IsOptional()
   @IsString()
   @MaxLength(128)
   apiKey?: string;
@@ -110,6 +115,11 @@ export class UpdateUserDto {
   @IsArray()
   @IsUUID('all', { each: true })
   permittedProviderIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  permittedSectorIds?: string[];
 
   @IsOptional()
   @IsString()

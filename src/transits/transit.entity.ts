@@ -117,6 +117,10 @@ export class Transit extends BaseEntity {
   @Column({ name: 'baseline_eta_minutes', type: 'decimal', precision: 6, scale: 2, nullable: true })
   baselineEtaMinutes: number | null;
 
+  /** Promised hospital arrival time from route ETA at corridor start / last ETA update */
+  @Column({ name: 'estimated_arrival_at', type: 'timestamptz', nullable: true })
+  estimatedArrivalAt: Date | null;
+
   /** CSR who claimed this green-corridor intimation */
   @Column({ name: 'claimed_by_id', nullable: true })
   claimedById: string | null;
@@ -127,6 +131,10 @@ export class Transit extends BaseEntity {
 
   @Column({ name: 'claimed_at', type: 'timestamptz', nullable: true })
   claimedAt: Date | null;
+
+  /** When ambulance first entered the hospital geofence (for delayed auto-complete). */
+  @Column({ name: 'geofence_entered_at', type: 'timestamptz', nullable: true })
+  geofenceEnteredAt: Date | null;
 
   @OneToMany(() => GpsLocation, (gps) => gps.transit)
   gpsLocations: GpsLocation[];

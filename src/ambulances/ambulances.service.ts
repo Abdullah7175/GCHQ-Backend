@@ -10,6 +10,8 @@ import { EventsGateway } from '../events/events.gateway';
 import { AmbulanceStatus, TransitStatus } from '../common/enums';
 import { TransitsService } from '../transits/transits.service';
 import { GpsCacheService } from '../gps/gps-cache.service';
+import { User } from '../users/user.entity';
+import { UserRole } from '../common/enums';
 
 @Injectable()
 export class AmbulancesService extends BaseCrudService<Ambulance> implements OnModuleInit, OnModuleDestroy {
@@ -18,6 +20,7 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
   constructor(
     @InjectRepository(Ambulance) private readonly ambulanceRepo: Repository<Ambulance>,
     @InjectRepository(GpsLocation) private readonly gpsRepo: Repository<GpsLocation>,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly events: EventsGateway,
     @Inject(forwardRef(() => TransitsService))
     private readonly transitsService: TransitsService,
@@ -27,7 +30,15 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     super(ambulanceRepo);
   }
 
-  onModuleInit() {
+  async onModuleInit() {
+    // Compatibility backfill for deployments upgrading from single-driver assignment.
+    await this.ambulanceRepo.query(`
+      INSERT INTO "ambulance_drivers" ("ambulance_id", "user_id")
+      SELECT "id", "driver_id"
+      FROM "ambulances"
+      WHERE "driver_id" IS NOT NULL
+      ON CONFLICT DO NOTHING
+    `);
     this.gpsUrlInterval = setInterval(() => this.crawlGpsUrls(), 5000);
   }
 
@@ -84,7 +95,7 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     return super.findAll(
       {
         where: cityId ? { cityId } : {},
-        relations: { provider: true, driver: true, city: true } as never,
+        relations: { provider: true, driver: true, assignedDrivers: true, city: true } as never,
         order: { unitNumber: 'ASC' },
       },
       page,
@@ -93,15 +104,96 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
   }
 
   findOne(id: string) {
-    return super.findOne(id, { provider: true, driver: true, city: true } as never);
+    return super.findOne(
+      id,
+      { provider: true, driver: true, assignedDrivers: true, city: true } as never,
+    );
   }
 
-  create(dto: CreateAmbulanceDto) {
-    return super.create(dto as Partial<Ambulance>);
+  async create(dto: CreateAmbulanceDto) {
+    const driverIds = dto.driverIds ?? (dto.driverId ? [dto.driverId] : []);
+    const assignedDrivers = await this.resolveAssignedDrivers(
+      driverIds,
+      dto.cityId,
+      dto.providerId,
+    );
+    const { driverIds: _driverIds, driverId: _legacyDriverId, ...data } = dto;
+    const ambulance = this.ambulanceRepo.create({
+      ...data,
+      driverId: null,
+      assignedDrivers,
+    });
+    return this.ambulanceRepo.save(ambulance);
   }
 
-  update(id: string, dto: UpdateAmbulanceDto) {
-    return super.update(id, dto as Partial<Ambulance>);
+  async update(id: string, dto: UpdateAmbulanceDto) {
+    const ambulance = await this.findOne(id);
+    const assignmentWasProvided = dto.driverIds !== undefined || dto.driverId !== undefined;
+    const driverIds = dto.driverIds ?? (dto.driverId ? [dto.driverId] : []);
+    const cityId = dto.cityId ?? ambulance.cityId;
+    const providerId = dto.providerId ?? ambulance.providerId;
+    const { driverIds: _driverIds, driverId: _legacyDriverId, ...data } = dto;
+
+    Object.assign(ambulance, data);
+    if (assignmentWasProvided) {
+      ambulance.assignedDrivers = await this.resolveAssignedDrivers(
+        driverIds,
+        cityId,
+        providerId,
+        id,
+      );
+      if (
+        ambulance.driverId &&
+        !ambulance.assignedDrivers.some((driver) => driver.id === ambulance.driverId)
+      ) {
+        ambulance.driverId = null;
+        ambulance.driver = null;
+      }
+    }
+    return this.ambulanceRepo.save(ambulance);
+  }
+
+  private async resolveAssignedDrivers(
+    driverIds: string[],
+    cityId: string,
+    providerId: string,
+    ambulanceId?: string,
+  ): Promise<User[]> {
+    if (driverIds.length === 0) return [];
+    if (driverIds.length > 3) {
+      throw new BadRequestException('An ambulance can have at most three assigned drivers');
+    }
+
+    const drivers = await this.userRepo.find({ where: { id: In(driverIds) } });
+    if (drivers.length !== driverIds.length) {
+      throw new BadRequestException('One or more selected drivers do not exist');
+    }
+
+    for (const driver of drivers) {
+      if (driver.role !== UserRole.PARAMEDIC) {
+        throw new BadRequestException(`${driver.email} is not a paramedic account`);
+      }
+      if (driver.cityId && driver.cityId !== cityId) {
+        throw new BadRequestException(`${driver.email} belongs to another city`);
+      }
+      if (driver.providerId && driver.providerId !== providerId) {
+        throw new BadRequestException(`${driver.email} belongs to another fleet provider`);
+      }
+
+      const assignedElsewhere = await this.ambulanceRepo
+        .createQueryBuilder('ambulance')
+        .innerJoin('ambulance.assignedDrivers', 'assignedDriver', 'assignedDriver.id = :driverId', {
+          driverId: driver.id,
+        })
+        .andWhere(ambulanceId ? 'ambulance.id <> :ambulanceId' : '1 = 1', { ambulanceId })
+        .getOne();
+      if (assignedElsewhere) {
+        throw new BadRequestException(
+          `${driver.email} is already assigned to ${assignedElsewhere.unitNumber}`,
+        );
+      }
+    }
+    return drivers;
   }
 
   /** Delete ambulance without wiping completed case history. */
@@ -135,7 +227,7 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     });
   }
 
-  async updateGps(id: string, dto: UpdateGpsDto, transitId?: string) {
+  async updateGps(id: string, dto: UpdateGpsDto, transitId?: string, driverId?: string) {
     const lat = Number(dto.latitude);
     const lng = Number(dto.longitude);
     const speed = dto.speed != null ? Number(dto.speed) : 0;
@@ -143,6 +235,13 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       throw new BadRequestException('Invalid latitude/longitude');
+    }
+
+    const currentAmbulance = await this.findOne(id);
+    if (driverId && currentAmbulance.driverId !== driverId) {
+      throw new BadRequestException(
+        'This driver session is not active for the selected ambulance',
+      );
     }
 
     // Always persist live position on the ambulance row (what HQ/admin maps read as fleet GPS)
@@ -201,7 +300,7 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
     };
   }
 
-  /** Assigned unit for the logged-in paramedic (driverId = user id) */
+  /** Unit for the currently active shift driver. Login sets driverId atomically. */
   async findMine(driverId: string) {
     const ambulance = await this.ambulanceRepo.findOne({
       where: { driverId },

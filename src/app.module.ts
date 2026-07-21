@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { UserAwareThrottlerGuard } from './common/security/user-aware-throttler.guard';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProvidersModule } from './providers/providers.module';
@@ -18,6 +18,11 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
 import { CitiesModule } from './cities/cities.module';
 import { SeedModule } from './seed/seed.module';
+import { AuditModule } from './audit/audit.module';
+import { AuditInterceptor } from './audit/audit.interceptor';
+import { LatencyModule } from './latency/latency.module';
+import { MessagingModule } from './messaging/messaging.module';
+import { GeofencesModule } from './geofences/geofences.module';
 
 @Module({
   imports: [
@@ -68,12 +73,20 @@ import { SeedModule } from './seed/seed.module';
     GpsModule,
     DashboardModule,
     EventsModule,
+    AuditModule,
+    LatencyModule,
+    MessagingModule,
+    GeofencesModule,
     SeedModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: UserAwareThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

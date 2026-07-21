@@ -4,12 +4,17 @@ import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { Transit } from './transit.entity';
 import { CreateTransitDto, UpdateTransitDto } from './dto/transit.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
-import { AmbulanceStatus, TransitStatus } from '../common/enums';
+import { AmbulanceStatus, TransitStatus, UserRole } from '../common/enums';
 import { Ambulance } from '../ambulances/ambulance.entity';
 import { Hospital } from '../hospitals/hospital.entity';
 import { City } from '../cities/city.entity';
 import { EventsGateway } from '../events/events.gateway';
 import { paginate, PaginatedResult } from '../common/dto/pagination.dto';
+import { JwtPayload } from '../auth/jwt.strategy';
+import { LatencyService } from '../latency/latency.service';
+import { HospitalGeofencesService } from '../geofences/hospital-geofences.service';
+import { DEFAULT_CITY_CONFIG } from '../cities/city-operational-config';
+import { isInsideGeofence, haversineMeters as geoHaversine } from '../geofences/geofence.util';
 
 @Injectable()
 export class TransitsService extends BaseCrudService<Transit> {
@@ -19,6 +24,8 @@ export class TransitsService extends BaseCrudService<Transit> {
     @InjectRepository(Hospital) private readonly hospitalRepo: Repository<Hospital>,
     @InjectRepository(City) private readonly cityRepo: Repository<City>,
     private readonly events: EventsGateway,
+    private readonly latencyService: LatencyService,
+    private readonly geofencesService: HospitalGeofencesService,
   ) {
     super(transitRepo);
   }
@@ -33,18 +40,55 @@ export class TransitsService extends BaseCrudService<Transit> {
     claimedBy: true,
   } as never;
 
-  /** Hospital arrival radius for demo geofence (meters). Swap for real tracker geofence later. */
-  private readonly HOSPITAL_GEOFENCE_METERS = 250;
-
   haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const R = 6371000;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
+    return geoHaversine(lat1, lng1, lat2, lng2);
+  }
+
+  private async tryGeofenceAutoComplete(
+    active: Transit,
+    lat: number,
+    lng: number,
+  ): Promise<Transit | null> {
+    if (active.status !== TransitStatus.EN_ROUTE || !active.hospitalId) return null;
+
+    const city = await this.cityRepo.findOne({ where: { id: active.cityId } });
+    const config = { ...DEFAULT_CITY_CONFIG, ...(city?.operationalConfig ?? {}) };
+    if (!config.geofenceAutoCompleteEnabled) return null;
+
+    const geofence = await this.geofencesService.findForHospital(active.hospitalId);
+    if (!geofence) return null;
+
+    const inside = isInsideGeofence(lat, lng, {
+      shapeType: geofence.shapeType,
+      centerLat: Number(geofence.centerLat),
+      centerLng: Number(geofence.centerLng),
+      radiusMeters: geofence.radiusMeters,
+      boundaryPoints: (geofence.boundaryPoints ?? []).map((p) => ({
+        latitude: Number(p.latitude),
+        longitude: Number(p.longitude),
+      })),
+    });
+    const delayMs = (config.geofenceAutoCompleteDelaySeconds ?? 10) * 1000;
+    const now = Date.now();
+
+    if (!inside) {
+      if (active.geofenceEnteredAt) {
+        await this.transitRepo.update(active.id, { geofenceEnteredAt: null });
+      }
+      return null;
+    }
+
+    if (!active.geofenceEnteredAt) {
+      await this.transitRepo.update(active.id, { geofenceEnteredAt: new Date(now) });
+      return null;
+    }
+
+    if (now - active.geofenceEnteredAt.getTime() >= delayMs) {
+      await this.transitRepo.update(active.id, { geofenceEnteredAt: null });
+      return this.complete(active.id);
+    }
+
+    return null;
   }
 
   async findAllPaginated(
@@ -168,9 +212,29 @@ export class TransitsService extends BaseCrudService<Transit> {
     return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  async create(dto: CreateTransitDto) {
+  private async assertParamedicOwnsAmbulance(
+    actor: Pick<JwtPayload, 'sub' | 'role'> | undefined,
+    ambulanceId: string | null | undefined,
+  ) {
+    if (!actor || actor.role !== UserRole.PARAMEDIC) return;
+    if (!ambulanceId) {
+      throw new ForbiddenException('No ambulance is linked to this transit');
+    }
+    const ambulance = await this.ambulanceRepo.findOne({
+      where: { id: ambulanceId },
+      select: { id: true, driverId: true },
+    });
+    if (!ambulance || ambulance.driverId !== actor.sub) {
+      throw new ForbiddenException(
+        'Only the active shift driver for this ambulance can perform this action',
+      );
+    }
+  }
+
+  async create(dto: CreateTransitDto, actor?: Pick<JwtPayload, 'sub' | 'role'>) {
     const ambulance = await this.ambulanceRepo.findOne({ where: { id: dto.ambulanceId } });
     if (!ambulance) throw new BadRequestException('Ambulance not found');
+    await this.assertParamedicOwnsAmbulance(actor, ambulance.id);
     if (ambulance.status !== AmbulanceStatus.AVAILABLE) {
       throw new BadRequestException('Ambulance is not available');
     }
@@ -259,8 +323,14 @@ export class TransitsService extends BaseCrudService<Transit> {
     };
   }
 
-  async start(id: string, lat?: number, lng?: number) {
+  async start(
+    id: string,
+    lat?: number,
+    lng?: number,
+    actor?: Pick<JwtPayload, 'sub' | 'role'>,
+  ) {
     const transit = await this.findOne(id);
+    await this.assertParamedicOwnsAmbulance(actor, transit.ambulanceId);
     if (transit.status !== TransitStatus.PENDING) {
       throw new BadRequestException('Transit already started');
     }
@@ -274,9 +344,17 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentLng: lng ?? transit.originLng,
     });
 
+    const startedAt = new Date();
+    const etaMinutes = transit.etaMinutes ?? transit.baselineEtaMinutes;
+    const estimatedArrivalAt = this.latencyService.computeEstimatedArrival(
+      startedAt,
+      etaMinutes != null ? Number(etaMinutes) : null,
+    );
+
     const updated = await super.update(id, {
       status: TransitStatus.EN_ROUTE,
-      startedAt: new Date(),
+      startedAt,
+      estimatedArrivalAt,
       currentLat: lat ?? transit.originLat,
       currentLng: lng ?? transit.originLng,
     });
@@ -341,8 +419,9 @@ export class TransitsService extends BaseCrudService<Transit> {
     return full;
   }
 
-  async complete(id: string) {
+  async complete(id: string, actor?: Pick<JwtPayload, 'sub' | 'role'>) {
     const transit = await this.findOne(id);
+    await this.assertParamedicOwnsAmbulance(actor, transit.ambulanceId);
     if (transit.status === TransitStatus.COMPLETED) {
       return transit;
     }
@@ -365,17 +444,20 @@ export class TransitsService extends BaseCrudService<Transit> {
       status: TransitStatus.COMPLETED,
       completedAt: new Date(),
       currentSpeed: 0,
+      ...(transit.arrivedAt ? {} : { arrivedAt: new Date() }),
     });
 
     // Row stays in `transits` with status=completed — never deleted on complete
     const full = await this.findOne(updated.id);
+    await this.latencyService.evaluateTransitArrival(full);
     this.events.broadcastTransitUpdate(full);
     this.events.broadcastDashboardRefresh(full.cityId);
     return full;
   }
 
-  async markArrived(id: string) {
+  async markArrived(id: string, actor?: Pick<JwtPayload, 'sub' | 'role'>) {
     const transit = await this.findOne(id);
+    await this.assertParamedicOwnsAmbulance(actor, transit.ambulanceId);
     if (transit.ambulanceId) {
       await this.ambulanceRepo.update(transit.ambulanceId, {
         status: AmbulanceStatus.BUSY,
@@ -388,6 +470,7 @@ export class TransitsService extends BaseCrudService<Transit> {
       currentSpeed: 0,
     });
     const full = await this.findOne(updated.id);
+    await this.latencyService.evaluateTransitArrival(full);
     this.events.broadcastTransitUpdate(full);
     return full;
   }
@@ -434,17 +517,15 @@ export class TransitsService extends BaseCrudService<Transit> {
     };
     if (etaMinutes != null && Number.isFinite(Number(etaMinutes))) {
       patch.etaMinutes = Number(etaMinutes);
+      patch.estimatedArrivalAt = this.latencyService.computeEstimatedArrivalFromRemaining(
+        Number(etaMinutes),
+      );
     }
 
     await this.transitRepo.update(active.id, patch as never);
 
-    if (
-      remaining != null &&
-      remaining <= this.HOSPITAL_GEOFENCE_METERS &&
-      active.status === TransitStatus.EN_ROUTE
-    ) {
-      return this.complete(active.id);
-    }
+    const autoCompleted = await this.tryGeofenceAutoComplete(active, lat, lng);
+    if (autoCompleted) return autoCompleted;
 
     const full = await this.findOne(active.id);
     this.events.broadcastGpsUpdate({
@@ -464,8 +545,10 @@ export class TransitsService extends BaseCrudService<Transit> {
   async updateEta(
     id: string,
     dto: { etaMinutes: number; currentLat?: number; currentLng?: number; currentSpeed?: number },
+    actor?: Pick<JwtPayload, 'sub' | 'role'>,
   ) {
     const transit = await this.findOne(id);
+    await this.assertParamedicOwnsAmbulance(actor, transit.ambulanceId);
     if (
       transit.status !== TransitStatus.PENDING &&
       transit.status !== TransitStatus.EN_ROUTE &&
@@ -479,7 +562,10 @@ export class TransitsService extends BaseCrudService<Transit> {
       throw new BadRequestException('etaMinutes must be a non-negative number');
     }
 
-    const patch: Partial<Transit> = { etaMinutes: eta };
+    const patch: Partial<Transit> = {
+      etaMinutes: eta,
+      estimatedArrivalAt: this.latencyService.computeEstimatedArrivalFromRemaining(eta),
+    };
     if (dto.currentLat != null && Number.isFinite(Number(dto.currentLat))) {
       patch.currentLat = Number(dto.currentLat);
     }

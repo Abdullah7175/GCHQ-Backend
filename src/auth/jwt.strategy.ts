@@ -12,6 +12,7 @@ export interface JwtPayload {
   hospitalId?: string;
   providerId?: string;
   sectorId?: string;
+  permittedSectorIds?: string[];
   isCityOverseer?: boolean;
   tokenVersion?: number;
 }
@@ -53,6 +54,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       hospitalId: user.hospitalId,
       providerId: user.providerId,
       sectorId: user.sectorId,
+      permittedSectorIds: user.permittedSectorIds ?? undefined,
       isCityOverseer: user.isCityOverseer,
       tokenVersion: user.tokenVersion,
     };
