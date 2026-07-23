@@ -35,11 +35,13 @@ export class LatencyRulesController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('cityId') cityId?: string,
+    @Query('q') q?: string,
   ) {
     return this.rulesService.listRules(
       page ? Number(page) : undefined,
       limit ? Number(limit) : undefined,
       cityId,
+      q,
     );
   }
 
@@ -79,11 +81,13 @@ export class LatencyRecipientsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('ruleId') ruleId?: string,
+    @Query('q') q?: string,
   ) {
     return this.rulesService.findRecipients(
       ruleId,
       page ? Number(page) : undefined,
       limit ? Number(limit) : undefined,
+      q,
     );
   }
 
@@ -119,10 +123,19 @@ export class LatencyBreachesController {
 
   @Get()
   @RequirePermissions(Permission.MANAGE_SYSTEM)
-  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('role') role?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     return this.latencyService.findAllRecords(
       page ? Number(page) : 1,
       limit ? Number(limit) : 50,
+      { name, email, role, from, to },
     );
   }
 }

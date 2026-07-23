@@ -21,16 +21,40 @@ export class HospitalsService extends BaseCrudService<Hospital> {
 
   private readonly relations = { sector: true, city: true, emergencyTypes: true } as never;
 
-  findByCity(cityId?: string, page?: number, limit?: number) {
-    return super.findAll(
-      {
-        where: cityId ? { cityId } : {},
-        relations: this.relations,
-        order: { name: 'ASC' },
-      },
-      page,
-      limit
-    );
+  findByCity(cityId?: string, page?: number, limit?: number, q?: string) {
+    if (!q?.trim()) {
+      return super.findAll(
+        {
+          where: cityId ? { cityId } : {},
+          relations: this.relations,
+          order: { name: 'ASC' },
+        },
+        page,
+        limit,
+      );
+    }
+    const qb = this.hospitalRepo
+      .createQueryBuilder('h')
+      .leftJoinAndSelect('h.sector', 'sector')
+      .leftJoinAndSelect('h.city', 'city')
+      .leftJoinAndSelect('h.emergencyTypes', 'emergencyTypes')
+      .orderBy('h.name', 'ASC');
+    if (cityId) qb.andWhere('h.cityId = :cityId', { cityId });
+    qb.andWhere('(h.name ILIKE :q OR h.address ILIKE :q)', { q: `%${q.trim()}%` });
+    if (page && limit) {
+      return qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount()
+        .then(([data, total]) => ({
+          data,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        }));
+    }
+    return qb.getMany();
   }
 
   findOne(id: string) {

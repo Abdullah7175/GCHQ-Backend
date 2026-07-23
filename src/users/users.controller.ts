@@ -23,11 +23,18 @@ export class UsersController {
 
   @Get()
   @RequirePermissions(Permission.MANAGE_SYSTEM)
-  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+    @Query('role') role?: string,
+  ) {
     return this.service.findAll(
       { relations: { hospital: true, provider: true, city: true, sector: true } as never, order: { createdAt: 'DESC' } },
       page ? Number(page) : undefined,
-      limit ? Number(limit) : undefined
+      limit ? Number(limit) : undefined,
+      q,
+      role,
     );
   }
 

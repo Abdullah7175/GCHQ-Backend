@@ -11,16 +11,38 @@ export class SectorsService extends BaseCrudService<Sector> {
     super(repo);
   }
 
-  findByCity(cityId?: string, page?: number, limit?: number) {
-    return super.findAll(
-      {
-        where: cityId ? { cityId } : {},
-        relations: { city: true } as never,
-        order: { name: 'ASC' },
-      },
-      page,
-      limit
-    );
+  findByCity(cityId?: string, page?: number, limit?: number, q?: string) {
+    if (!q?.trim()) {
+      return super.findAll(
+        {
+          where: cityId ? { cityId } : {},
+          relations: { city: true } as never,
+          order: { name: 'ASC' },
+        },
+        page,
+        limit,
+      );
+    }
+    const qb = this.repository
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.city', 'city')
+      .orderBy('s.name', 'ASC');
+    if (cityId) qb.andWhere('s.cityId = :cityId', { cityId });
+    qb.andWhere('(s.name ILIKE :q OR s.code ILIKE :q)', { q: `%${q.trim()}%` });
+    if (page && limit) {
+      return qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount()
+        .then(([data, total]) => ({
+          data,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        }));
+    }
+    return qb.getMany();
   }
 
   findOne(id: string) {

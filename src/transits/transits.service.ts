@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindOptionsWhere } from 'typeorm';
+import { Repository, In, FindOptionsWhere, Between, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
 import { Transit } from './transit.entity';
 import { CreateTransitDto, UpdateTransitDto } from './dto/transit.dto';
 import { BaseCrudService } from '../common/services/base-crud.service';
@@ -9,15 +9,30 @@ import { Ambulance } from '../ambulances/ambulance.entity';
 import { Hospital } from '../hospitals/hospital.entity';
 import { City } from '../cities/city.entity';
 import { EventsGateway } from '../events/events.gateway';
-import { paginate, PaginatedResult } from '../common/dto/pagination.dto';
 import { JwtPayload } from '../auth/jwt.strategy';
 import { LatencyService } from '../latency/latency.service';
+import { LatencyBreachRecord } from '../latency/latency-breach-record.entity';
 import { HospitalGeofencesService } from '../geofences/hospital-geofences.service';
 import { DEFAULT_CITY_CONFIG } from '../cities/city-operational-config';
 import { isInsideGeofence, haversineMeters as geoHaversine } from '../geofences/geofence.util';
 import { RouteEtaService } from '../eta/route-eta.service';
 import { OsrmRoutingService } from '../eta/osrm-routing.service';
 import { EtaCalibrationService } from '../eta/eta-calibration.service';
+
+export interface TransitCaseDetails extends Transit {
+  totalDistanceMeters: number | null;
+  etaBreach: LatencyBreachRecord | null;
+  etaBreaches: LatencyBreachRecord[];
+  breached: boolean;
+}
+
+export interface TransitListFilters {
+  ambulanceId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  activeOnly?: boolean;
+}
 
 @Injectable()
 export class TransitsService extends BaseCrudService<Transit> {
@@ -97,26 +112,74 @@ export class TransitsService extends BaseCrudService<Transit> {
     return null;
   }
 
+  private parseDayBound(iso: string, endOfDay: boolean): Date {
+    const raw = iso.trim();
+    // Date-only (YYYY-MM-DD) → bound to local calendar day in UTC wall-clock
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return endOfDay
+        ? new Date(`${raw}T23:59:59.999Z`)
+        : new Date(`${raw}T00:00:00.000Z`);
+    }
+    return new Date(raw);
+  }
+
+  private buildStartedAtFilter(from?: string, to?: string): FindOptionsWhere<Transit>['startedAt'] | undefined {
+    if (!from && !to) return undefined;
+    if (from && to) {
+      return Between(this.parseDayBound(from, false), this.parseDayBound(to, true));
+    }
+    if (from) return MoreThanOrEqual(this.parseDayBound(from, false));
+    return LessThanOrEqual(this.parseDayBound(to!, true));
+  }
+
   async findAllPaginated(
     cityId?: string,
     page = 1,
     limit = 20,
-    activeOnly = false,
-  ): Promise<PaginatedResult<Transit>> {
+    filters: TransitListFilters = {},
+  ): Promise<{ data: Transit[]; total: number; page: number; limit: number; totalPages: number }> {
     const where: FindOptionsWhere<Transit> = {};
     if (cityId) where.cityId = cityId;
-    if (activeOnly) {
+    if (filters.ambulanceId) where.ambulanceId = filters.ambulanceId;
+    if (filters.activeOnly) {
       where.status = In([TransitStatus.PENDING, TransitStatus.EN_ROUTE, TransitStatus.ARRIVED]);
+    } else if (filters.status) {
+      where.status = filters.status as TransitStatus;
     }
+    const startedAt = this.buildStartedAtFilter(filters.from, filters.to);
+    if (startedAt) where.startedAt = startedAt;
 
     const [data, total] = await this.transitRepo.findAndCount({
       where,
       relations: this.relations,
-      order: { createdAt: 'DESC' },
+      order: { startedAt: 'DESC', createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
-    return paginate(data, total, page, limit);
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  /** Completed cases for one ambulance in an optional date range (Admin / ops history). */
+  async findHistoryByAmbulance(ambulanceId: string, from?: string, to?: string): Promise<Transit[]> {
+    const where: FindOptionsWhere<Transit> = {
+      ambulanceId,
+      status: TransitStatus.COMPLETED,
+    };
+    const startedAt = this.buildStartedAtFilter(from, to);
+    if (startedAt) where.startedAt = startedAt;
+
+    return this.transitRepo.find({
+      where,
+      relations: this.relations,
+      order: { startedAt: 'DESC', completedAt: 'DESC' },
+      take: 500,
+    });
   }
 
   list(cityId?: string) {
@@ -130,6 +193,41 @@ export class TransitsService extends BaseCrudService<Transit> {
 
   findOne(id: string) {
     return super.findOne(id, this.relations);
+  }
+
+  async findCaseDetails(id: string): Promise<TransitCaseDetails> {
+    const transit = await this.findOne(id);
+    const etaBreaches = await this.latencyService.findTransitEtaBreaches(id);
+    return {
+      ...(transit as Transit),
+      totalDistanceMeters: transit.routeDistanceMeters,
+      etaBreach: etaBreaches[0] ?? null,
+      etaBreaches,
+      breached: etaBreaches.length > 0,
+    };
+  }
+
+  /** Prefer OSRM plan distance; fall back to straight-line origin→hospital. */
+  private resolveTotalDistanceMeters(transit: Transit): number | null {
+    if (transit.routeDistanceMeters != null && Number.isFinite(Number(transit.routeDistanceMeters))) {
+      return Math.round(Number(transit.routeDistanceMeters));
+    }
+    if (
+      transit.originLat != null &&
+      transit.originLng != null &&
+      transit.hospital?.latitude != null &&
+      transit.hospital?.longitude != null
+    ) {
+      return Math.round(
+        this.haversineMeters(
+          Number(transit.originLat),
+          Number(transit.originLng),
+          Number(transit.hospital.latitude),
+          Number(transit.hospital.longitude),
+        ),
+      );
+    }
+    return null;
   }
 
   async findActiveForAmbulance(ambulanceId: string): Promise<Transit | null> {
@@ -482,11 +580,14 @@ export class TransitsService extends BaseCrudService<Transit> {
       });
     }
 
+    const totalDistanceMeters = this.resolveTotalDistanceMeters(transit);
+
     const updated = await super.update(id, {
       status: TransitStatus.COMPLETED,
       completedAt: new Date(),
       currentSpeed: 0,
       ...(transit.arrivedAt ? {} : { arrivedAt: new Date() }),
+      ...(totalDistanceMeters != null ? { routeDistanceMeters: totalDistanceMeters } : {}),
     });
 
     // Row stays in `transits` with status=completed — never deleted on complete
@@ -579,7 +680,7 @@ export class TransitsService extends BaseCrudService<Transit> {
         );
         if (route) {
           patch.routeGeometry = route.coordinatesLngLat;
-          patch.routeDistanceMeters = route.distanceMeters;
+          // Keep routeDistanceMeters from the initial plan — that is total trip distance for case records.
           // Keep original staticDurationSeconds for calibration against first plan.
           this.routeEta.registerRoute(active.id, route.coordinatesLngLat);
           live = await this.routeEta.onGpsPing({

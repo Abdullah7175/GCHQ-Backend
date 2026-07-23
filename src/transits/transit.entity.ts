@@ -137,7 +137,7 @@ export class Transit extends BaseEntity {
   @Column({ name: 'route_geometry', type: 'jsonb', nullable: true })
   routeGeometry: [number, number][] | null;
 
-  /** OSRM static route distance (meters) at last route plan */
+  /** Total route distance (meters) from initial OSRM plan; finalized on complete */
   @Column({ name: 'route_distance_meters', type: 'int', nullable: true })
   routeDistanceMeters: number | null;
 

@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Patch, Query, UseGuards, Req } from '@nestjs/common';
 import { AmbulancesService } from './ambulances.service';
 import { CreateAmbulanceDto, UpdateAmbulanceDto, UpdateGpsDto } from './dto/ambulance.dto';
+import { TransitHistoryQueryDto } from './dto/transit-history-query.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -13,8 +14,18 @@ export class AmbulancesController {
   constructor(private readonly service: AmbulancesService) {}
 
   @Get()
-  findAll(@Query('cityId') cityId?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.service.findByCity(cityId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  findAll(
+    @Query('cityId') cityId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.service.findByCity(
+      cityId,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+      q,
+    );
   }
 
   @Get('available')
@@ -27,6 +38,13 @@ export class AmbulancesController {
   @RequirePermissions(Permission.UPDATE_GPS)
   findMine(@Req() req: { user: JwtPayload }) {
     return this.service.findMine(req.user.sub);
+  }
+
+  /** Completed cases for this unit, optional date range (Admin Cases / history). */
+  @Get(':id/transit-history')
+  @RequirePermissions(Permission.READ_TRANSIT)
+  transitHistory(@Param('id') id: string, @Query() query: TransitHistoryQueryDto) {
+    return this.service.findTransitHistory(id, query.from, query.to);
   }
 
   @Get(':id')

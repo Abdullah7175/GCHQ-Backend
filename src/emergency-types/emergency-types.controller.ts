@@ -13,8 +13,12 @@ export class EmergencyTypesController {
   constructor(private readonly service: EmergencyTypesService) {}
 
   @Get()
-  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.service.findAll(undefined, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string, @Query('q') q?: string) {
+    return this.service.search(
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+      q,
+    );
   }
 
   @Get(':id')

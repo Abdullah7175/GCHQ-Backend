@@ -91,16 +91,44 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
   }
 
 
-  findByCity(cityId?: string, page?: number, limit?: number) {
-    return super.findAll(
-      {
-        where: cityId ? { cityId } : {},
-        relations: { provider: true, driver: true, assignedDrivers: true, city: true } as never,
-        order: { unitNumber: 'ASC' },
-      },
-      page,
-      limit
+  findByCity(cityId?: string, page?: number, limit?: number, q?: string) {
+    if (!q?.trim()) {
+      return super.findAll(
+        {
+          where: cityId ? { cityId } : {},
+          relations: { provider: true, driver: true, assignedDrivers: true, city: true } as never,
+          order: { unitNumber: 'ASC' },
+        },
+        page,
+        limit,
+      );
+    }
+    const qb = this.ambulanceRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.provider', 'provider')
+      .leftJoinAndSelect('a.driver', 'driver')
+      .leftJoinAndSelect('a.assignedDrivers', 'assignedDrivers')
+      .leftJoinAndSelect('a.city', 'city')
+      .orderBy('a.unitNumber', 'ASC');
+    if (cityId) qb.andWhere('a.cityId = :cityId', { cityId });
+    qb.andWhere(
+      '(a.unitNumber ILIKE :q OR provider.name ILIKE :q OR CAST(a.status AS text) ILIKE :q)',
+      { q: `%${q.trim()}%` },
     );
+    if (page && limit) {
+      return qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount()
+        .then(([data, total]) => ({
+          data,
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        }));
+    }
+    return qb.getMany();
   }
 
   findOne(id: string) {
@@ -301,6 +329,11 @@ export class AmbulancesService extends BaseCrudService<Ambulance> implements OnM
   }
 
   /** Unit for the currently active shift driver. Login sets driverId atomically. */
+  /** Completed transit history for Admin Cases search by unit + date. */
+  findTransitHistory(ambulanceId: string, from?: string, to?: string) {
+    return this.transitsService.findHistoryByAmbulance(ambulanceId, from, to);
+  }
+
   async findMine(driverId: string) {
     const ambulance = await this.ambulanceRepo.findOne({
       where: { driverId },

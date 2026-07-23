@@ -48,24 +48,59 @@ export class UsersService extends BaseCrudService<User> {
     return sanitizeUser(created as unknown as Record<string, unknown>) as unknown as User;
   }
 
-  findAll(options?: any, page?: number, limit?: number) {
-    return super.findAll(
-      {
-        ...options,
-        relations: { hospital: true, provider: true, city: true, sector: true } as never,
-        order: { createdAt: 'DESC' },
-      },
-      page,
-      limit,
-    ).then(async (result) => {
-      if (Array.isArray(result)) {
-        return result.map((u) => sanitizeUser(u as unknown as Record<string, unknown>));
+  findAll(options?: any, page?: number, limit?: number, q?: string, role?: string) {
+    if (!q?.trim() && !role?.trim()) {
+      return super.findAll(
+        {
+          ...options,
+          relations: { hospital: true, provider: true, city: true, sector: true } as never,
+          order: { createdAt: 'DESC' },
+        },
+        page,
+        limit,
+      ).then(async (result) => {
+        if (Array.isArray(result)) {
+          return result.map((u) => sanitizeUser(u as unknown as Record<string, unknown>));
+        }
+        return {
+          ...result,
+          data: result.data.map((u) => sanitizeUser(u as unknown as Record<string, unknown>)),
+        };
+      }) as never;
+    }
+
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .leftJoinAndSelect('u.hospital', 'hospital')
+      .leftJoinAndSelect('u.provider', 'provider')
+      .leftJoinAndSelect('u.city', 'city')
+      .leftJoinAndSelect('u.sector', 'sector')
+      .orderBy('u.createdAt', 'DESC');
+
+    if (role?.trim()) qb.andWhere('u.role = :role', { role: role.trim() });
+    if (q?.trim()) {
+      qb.andWhere('(u.name ILIKE :q OR u.email ILIKE :q)', {
+        q: `%${q.trim()}%`,
+      });
+    }
+
+    return (async () => {
+      if (page && limit) {
+        const [data, total] = await qb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getManyAndCount();
+        return {
+          data: data.map((u) => sanitizeUser(u as unknown as Record<string, unknown>)),
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+        };
       }
-      return {
-        ...result,
-        data: result.data.map((u) => sanitizeUser(u as unknown as Record<string, unknown>)),
-      };
-    }) as never;
+      const data = await qb.getMany();
+      return data.map((u) => sanitizeUser(u as unknown as Record<string, unknown>));
+    })() as never;
   }
 
   async findOne(id: string, relations?: any): Promise<User> {

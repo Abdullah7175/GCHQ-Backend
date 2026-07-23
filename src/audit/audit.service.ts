@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from './audit-log.entity';
+import { parseDayBound } from '../common/utils/day-bounds';
 
 export interface AuditRecord {
   userId?: string | null;
@@ -60,9 +61,16 @@ export class AuditService {
   async findAll(
     page = 1,
     limit = 50,
-    userId?: string,
-    action?: string,
-    resource?: string,
+    filters: {
+      userId?: string;
+      action?: string;
+      resource?: string;
+      name?: string;
+      email?: string;
+      role?: string;
+      from?: string;
+      to?: string;
+    } = {},
   ) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(200, Math.max(1, limit));
@@ -80,12 +88,37 @@ export class AuditService {
       .skip((safePage - 1) * safeLimit)
       .take(safeLimit);
 
-    if (userId) query.andWhere('audit.userId = :userId', { userId });
-    if (action) {
-      query.andWhere('audit.action ILIKE :action', { action: `%${action}%` });
+    if (filters.userId) query.andWhere('audit.userId = :userId', { userId: filters.userId });
+    if (filters.action) {
+      query.andWhere('audit.action ILIKE :action', { action: `%${filters.action}%` });
     }
-    if (resource) {
-      query.andWhere(`audit.metadata ->> 'resource' = :resource`, { resource });
+    if (filters.resource) {
+      query.andWhere(`audit.metadata ->> 'resource' = :resource`, { resource: filters.resource });
+    }
+    if (filters.name?.trim()) {
+      query.andWhere('user.name ILIKE :name', { name: `%${filters.name.trim()}%` });
+    }
+    if (filters.email?.trim()) {
+      query.andWhere(
+        '(audit.userEmail ILIKE :email OR user.email ILIKE :email)',
+        { email: `%${filters.email.trim()}%` },
+      );
+    }
+    if (filters.role?.trim()) {
+      query.andWhere(
+        '(audit.userRole = :role OR user.role = :role)',
+        { role: filters.role.trim() },
+      );
+    }
+    if (filters.from) {
+      query.andWhere('audit.createdAt >= :from', {
+        from: parseDayBound(filters.from, false),
+      });
+    }
+    if (filters.to) {
+      query.andWhere('audit.createdAt <= :to', {
+        to: parseDayBound(filters.to, true),
+      });
     }
 
     const [data, total] = await query.getManyAndCount();

@@ -39,12 +39,14 @@ export class HospitalsController {
     @Query('cityId') requestedCityId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('q') q?: string,
   ) {
     const cityId = resolveCityId(req.user, requestedCityId);
     return this.service.findByCity(
       cityId,
       page ? Number(page) : undefined,
       limit ? Number(limit) : undefined,
+      q,
     );
   }
 

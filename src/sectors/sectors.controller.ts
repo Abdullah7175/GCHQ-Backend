@@ -12,8 +12,18 @@ export class SectorsController {
   constructor(private readonly service: SectorsService) {}
 
   @Get()
-  findAll(@Query('cityId') cityId?: string, @Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.service.findByCity(cityId, page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  findAll(
+    @Query('cityId') cityId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.service.findByCity(
+      cityId,
+      page ? Number(page) : undefined,
+      limit ? Number(limit) : undefined,
+      q,
+    );
   }
 
   @Get(':id')

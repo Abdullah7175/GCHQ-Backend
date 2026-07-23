@@ -35,12 +35,13 @@ export class TransitsController {
     const cityId = resolveCityId(req.user, query.cityId);
     if (query.hospitalId) return this.service.findByHospital(query.hospitalId);
     if (query.paginated === 'true') {
-      return this.service.findAllPaginated(
-        cityId,
-        query.page,
-        query.limit,
-        query.active === 'true',
-      );
+      return this.service.findAllPaginated(cityId, query.page, query.limit, {
+        ambulanceId: query.ambulanceId,
+        status: query.status,
+        from: query.from,
+        to: query.to,
+        activeOnly: query.active === 'true',
+      });
     }
     if (query.active === 'true') return this.service.findActive(cityId);
     return this.service.list(cityId);
@@ -49,7 +50,7 @@ export class TransitsController {
   @Get(':id')
   @RequirePermissions(Permission.READ_TRANSIT)
   findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+    return this.service.findCaseDetails(id);
   }
 
   @Post()

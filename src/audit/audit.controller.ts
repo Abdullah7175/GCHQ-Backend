@@ -18,13 +18,21 @@ export class AuditController {
     @Query('userId') userId?: string,
     @Query('action') action?: string,
     @Query('resource') resource?: string,
+    @Query('name') name?: string,
+    @Query('email') email?: string,
+    @Query('role') role?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.audit.findAll(
-      page ? Number(page) : 1,
-      limit ? Number(limit) : 50,
+    return this.audit.findAll(page ? Number(page) : 1, limit ? Number(limit) : 50, {
       userId,
       action,
       resource,
-    );
+      name,
+      email,
+      role,
+      from,
+      to,
+    });
   }
 }

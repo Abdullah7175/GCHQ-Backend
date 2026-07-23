@@ -16,6 +16,7 @@ import {
   LatencyNotifyChannel,
 } from './latency.enums';
 import { MessagingService } from '../messaging/messaging.service';
+import { parseDayBound } from '../common/utils/day-bounds';
 
 const PRESENCE_CHECK_MS = 60_000;
 const NOTIFICATION_DISPATCH_MS = 30_000;
@@ -443,15 +444,70 @@ export class LatencyService implements OnModuleInit {
     });
   }
 
-  async findAllRecords(page = 1, limit = 50) {
+  /** ETA breach records linked to a transit (referenceType=transit). */
+  async findTransitEtaBreaches(transitId: string): Promise<LatencyBreachRecord[]> {
+    return this.recordRepo.find({
+      where: {
+        breachType: LatencyBreachType.TRANSIT_ETA,
+        referenceType: 'transit',
+        referenceId: transitId,
+      },
+      relations: { rule: true, sector: true },
+      order: { detectedAt: 'DESC' },
+    });
+  }
+
+  async findAllRecords(
+    page = 1,
+    limit = 50,
+    filters: {
+      name?: string;
+      email?: string;
+      role?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(200, Math.max(1, limit));
-    const [data, total] = await this.recordRepo.findAndCount({
-      relations: { rule: true, city: true, sector: true, notifications: true },
-      order: { detectedAt: 'DESC' },
-      skip: (safePage - 1) * safeLimit,
-      take: safeLimit,
-    });
+    const query = this.recordRepo
+      .createQueryBuilder('r')
+      .leftJoinAndSelect('r.rule', 'rule')
+      .leftJoinAndSelect('r.city', 'city')
+      .leftJoinAndSelect('r.sector', 'sector')
+      .leftJoinAndSelect('r.notifications', 'notifications')
+      .orderBy('r.detectedAt', 'DESC')
+      .skip((safePage - 1) * safeLimit)
+      .take(safeLimit);
+
+    if (filters.name?.trim()) {
+      query.andWhere(
+        `(r.metadata ->> 'userName' ILIKE :name OR r.metadata ->> 'unitNumber' ILIKE :name OR r.metadata ->> 'transitId' ILIKE :name)`,
+        { name: `%${filters.name.trim()}%` },
+      );
+    }
+    if (filters.email?.trim()) {
+      query.andWhere(`r.metadata ->> 'userEmail' ILIKE :email`, {
+        email: `%${filters.email.trim()}%`,
+      });
+    }
+    if (filters.role?.trim()) {
+      query.andWhere(`r.metadata ->> 'userRole' = :role`, {
+        role: filters.role.trim(),
+      });
+    }
+    if (filters.from) {
+      query.andWhere('r.detectedAt >= :from', {
+        from: parseDayBound(filters.from, false),
+      });
+    }
+    if (filters.to) {
+      query.andWhere('r.detectedAt <= :to', {
+        to: parseDayBound(filters.to, true),
+      });
+    }
+
+    const [data, total] = await query.getManyAndCount();
     return {
       data,
       total,

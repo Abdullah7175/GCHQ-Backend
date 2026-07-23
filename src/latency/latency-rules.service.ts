@@ -11,23 +11,37 @@ import { normalizePakistanPhone } from '../messaging/phone.util';
 export class LatencyRulesService extends BaseCrudService<LatencyBreachRule> {
   constructor(
     @InjectRepository(LatencyBreachRule)
-    ruleRepo: Repository<LatencyBreachRule>,
+    private readonly ruleRepo: Repository<LatencyBreachRule>,
     @InjectRepository(LatencyBreachRecipient)
     private readonly recipientRepo: Repository<LatencyBreachRecipient>,
   ) {
     super(ruleRepo);
   }
 
-  listRules(page?: number, limit?: number, cityId?: string) {
-    return super.findAll(
-      {
-        where: cityId ? { cityId } : {},
-        relations: { city: true, sector: true, recipients: true } as never,
-        order: { name: 'ASC' },
-      },
-      page,
-      limit,
-    );
+  async listRules(page?: number, limit?: number, cityId?: string, q?: string) {
+    const qb = this.ruleRepo
+      .createQueryBuilder('rule')
+      .leftJoinAndSelect('rule.city', 'city')
+      .leftJoinAndSelect('rule.sector', 'sector')
+      .leftJoinAndSelect('rule.recipients', 'recipients')
+      .orderBy('rule.name', 'ASC');
+
+    if (cityId) qb.andWhere('rule.cityId = :cityId', { cityId });
+    if (q?.trim()) {
+      qb.andWhere(
+        '(rule.name ILIKE :q OR CAST(rule.breachType AS text) ILIKE :q OR CAST(rule.targetRole AS text) ILIKE :q)',
+        { q: `%${q.trim()}%` },
+      );
+    }
+
+    if (page && limit) {
+      const [data, total] = await qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
+    }
+    return qb.getMany();
   }
 
   findOne(id: string) {
@@ -42,24 +56,27 @@ export class LatencyRulesService extends BaseCrudService<LatencyBreachRule> {
     return super.update(id, dto as Partial<LatencyBreachRule>);
   }
 
-  async findRecipients(ruleId?: string, page?: number, limit?: number) {
-    const where = ruleId ? { ruleId } : {};
-    if (page && limit) {
-      const skip = (page - 1) * limit;
-      const [data, total] = await this.recipientRepo.findAndCount({
-        where,
-        relations: { rule: true },
-        order: { name: 'ASC' },
-        skip,
-        take: limit,
+  async findRecipients(ruleId?: string, page?: number, limit?: number, q?: string) {
+    const qb = this.recipientRepo
+      .createQueryBuilder('r')
+      .leftJoinAndSelect('r.rule', 'rule')
+      .orderBy('r.name', 'ASC');
+
+    if (ruleId) qb.andWhere('r.ruleId = :ruleId', { ruleId });
+    if (q?.trim()) {
+      qb.andWhere('(r.name ILIKE :q OR r.phone ILIKE :q OR rule.name ILIKE :q)', {
+        q: `%${q.trim()}%`,
       });
-      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     }
-    return this.recipientRepo.find({
-      where,
-      relations: { rule: true },
-      order: { name: 'ASC' },
-    });
+
+    if (page && limit) {
+      const [data, total] = await qb
+        .skip((page - 1) * limit)
+        .take(limit)
+        .getManyAndCount();
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) || 1 };
+    }
+    return qb.getMany();
   }
 
   findRecipient(id: string) {

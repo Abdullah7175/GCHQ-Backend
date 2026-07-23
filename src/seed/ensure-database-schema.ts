@@ -391,6 +391,10 @@ export async function ensureDatabaseSchema(dataSource: DataSource): Promise<void
     ON "transits" ("status", "ambulance_id")
   `);
   await dataSource.query(`
+    CREATE INDEX IF NOT EXISTS "IDX_transits_ambulance_started"
+    ON "transits" ("ambulance_id", "started_at")
+  `);
+  await dataSource.query(`
     CREATE INDEX IF NOT EXISTS "IDX_transits_city_status_started"
     ON "transits" ("city_id", "status", "started_at" DESC)
   `);
